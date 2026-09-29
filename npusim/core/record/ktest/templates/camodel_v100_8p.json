@@ -1,0 +1,10 @@
+{
+    "sysconf": {
+        "esl_top_thread_cnt": 23,
+        "number_of_chip": 8,
+        "chip_type": "{8, 0}",
+        "global_route_table_file": "./parameter/8p_fullmesh_route.csv",
+        "global_port_link_file": "./parameter/8p_fullmesh_link.csv",
+        "ub_memory_en": true
+    }
+}

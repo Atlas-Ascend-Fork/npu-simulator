@@ -1,0 +1,89 @@
+name: staticcheck_action
+
+on:
+  workflow_call:
+    inputs:
+      check_type:
+        required: false
+        type: string
+        default: ''
+      image_version:
+        required: true
+        type: string
+
+jobs:
+  JOB_staticcheck:
+    name: staticcheck
+    steps:
+      - name: Checkout
+        identifier: process_checkout
+        uses: checkout
+        with:
+          ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+          token: ${{ secrets.GIT_TOKEN }}
+      - name: get_pr
+        identifier: get_pr
+        uses: cann/.gitcode/actions/get-pr@master
+        with:
+          workspace: ${{ steps.process_checkout.outputs.path }}
+          target_branch: ${{ env.TARGET_BRANCH }}
+          git_token: ${{ secrets.GIT_TOKEN }}
+      - name: staticcheck markdown
+        if: ${{ inputs.check_type == '' || inputs.check_type == 'markdown' }}
+        identifier: staticcheck_markdown
+        uses: cann/.gitcode/actions/staticcheck@master
+        with:
+          check_type: 'markdown'
+          target_branch: ${{ env.TARGET_BRANCH }}
+          repo_name: ${{ env.repo_name }}
+          merge_id: ${{ env.MERGE_ID }}
+          commit_id: ${{ env.COMMIT_ID }}
+          workspace: ${{ steps.process_checkout.outputs.path }}
+      - name: staticcheck codespell
+        if: ${{ inputs.check_type == '' || inputs.check_type == 'codespell_check' }}
+        identifier: staticcheck_codespell
+        uses: cann/.gitcode/actions/staticcheck@master
+        with:
+          check_type: 'codespell_check'
+          target_branch: ${{ env.TARGET_BRANCH }}
+          repo_name: ${{ env.repo_name }}
+          merge_id: ${{ env.MERGE_ID }}
+          commit_id: ${{ env.COMMIT_ID }}
+          workspace: ${{ steps.process_checkout.outputs.path }}
+      - name: staticcheck tag_closed
+        if: ${{ inputs.check_type == '' || inputs.check_type == 'tag_closed_check' }}
+        identifier: staticcheck_tag_closed
+        uses: cann/.gitcode/actions/staticcheck@master
+        with:
+          check_type: 'tag_closed_check'
+          target_branch: ${{ env.TARGET_BRANCH }}
+          repo_name: ${{ env.repo_name }}
+          merge_id: ${{ env.MERGE_ID }}
+          commit_id: ${{ env.COMMIT_ID }}
+          workspace: ${{ steps.process_checkout.outputs.path }}
+      - name: staticcheck resource
+        if: ${{ inputs.check_type == '' || inputs.check_type == 'resource_existence_check' }}
+        identifier: staticcheck_resource
+        uses: cann/.gitcode/actions/staticcheck@master
+        with:
+          check_type: 'resource_existence_check'
+          target_branch: ${{ env.TARGET_BRANCH }}
+          repo_name: ${{ env.repo_name }}
+          merge_id: ${{ env.MERGE_ID }}
+          commit_id: ${{ env.COMMIT_ID }}
+          workspace: ${{ steps.process_checkout.outputs.path }}
+      - name: staticcheck link
+        if: ${{ inputs.check_type == '' || inputs.check_type == 'link_validity_check' }}
+        identifier: staticcheck_link
+        uses: cann/.gitcode/actions/staticcheck@master
+        with:
+          check_type: 'link_validity_check'
+          target_branch: ${{ env.TARGET_BRANCH }}
+          repo_name: ${{ env.repo_name }}
+          merge_id: ${{ env.MERGE_ID }}
+          commit_id: ${{ env.COMMIT_ID }}
+          workspace: ${{ steps.process_checkout.outputs.path }}
+    if: "${{ default() }}"
+    runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+    container:
+      image: swr.cn-north-4.myhuaweicloud.com/static_check/ubuntu24.04.03:v1.0

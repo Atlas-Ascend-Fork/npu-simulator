@@ -1,0 +1,115 @@
+# ---------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd. All rights reserved.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ---------------------------------------------------------------------------------------------------------
+minimum_pre_commit_version: 4.0.0
+exclude: ^LICENSES/|\.(html|csv|svg)$
+
+default_stages: [pre-commit]
+ci:
+  autofix_prs: false
+  autoupdate_schedule: monthly
+
+repos:
+  # pre-commit 基础检查
+  - repo: https://gitcode.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-added-large-files
+        exclude: ^docs/zh/best_practices/images/(rms_native_0|rsm_ub_5)\.png$
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-json
+        exclude: .*_runtime_kb\.json$
+
+  # C++ 代码格式化检查
+  - repo: https://gitcode.com/pre-commit-clang/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx|asc)$
+        args:
+          - "--style=file"
+          - "--verbose"
+          - "-i"
+        exclude: ^build/|tests/third_party/
+
+  # Python 代码检查。
+  # 注意：不用 github 输出格式（::error 注解在终端里看不出具体位置），默认的
+  # "concise" 格式直接打印  file:行:列  便于定位。
+  # ruff-format 使用 --check --diff：失败时保留 untracked 临时文件，并直接打印
+  # unified diff（含文件名和 @@ 行号），而不是只显示 "files were modified"。
+  - repo: https://gitcode.com/gh_mirrors/ru/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+        types: [python]
+      - id: ruff-format
+        args: ["--check", "--diff"]
+        types: [python]
+
+  # 拼写检查
+  - repo: https://gitcode.com/gh_mirrors/co/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args: [
+            "-L",
+            "CANN,cann,NNAL,nnal,ASCEND,ascend,EnQue,CopyIn,ArchType,AND,ND,tbe,copyin,alog,wIh,dout,outWeight,Te",
+            "--skip",
+            "*.py,*.cpp,*.hpp,*.c,*.h,*.md",
+          ]
+
+  # OAT 合规性检查 (Open Source Audit Tool)
+  - repo: local
+    hooks:
+      - id: oat-check
+        name: OAT Compliance Check
+        entry: bash .gitcode/scripts/oat_check.sh
+        language: system
+        pass_filenames: true
+        types: [file]
+        stages: [pre-commit]
+        verbose: true
+
+  # 漏洞扫描 (bandit)
+  # -ll 只报 Medium 及以上；B608 是 SQLite 内部 SQL 构造的误报，
+  # 不在本仓代码中引入用户可控输入，保留 Medium 报告但不阻断提交。
+  - repo: local
+    hooks:
+      - id: bandit
+        name: bandit
+        entry: python -m bandit
+        language: python
+        additional_dependencies: ["bandit==1.8.0"]
+        args: ["-r", "npusim/", "prof_demo/", "-ll", "-s", "B608"]
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true
+
+  # 依赖漏洞扫描 (pip-audit)
+  # 审计 setup.py 声明的运行时依赖（numpy/plotly）与 tests/requirements.txt
+  # 声明的测试依赖；使用 local hook 以便同时覆盖两类依赖清单。
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit
+        entry: python3 .gitcode/scripts/pip_audit_wrapper.py
+        language: python
+        additional_dependencies: ["pip-audit==2.9.0"]
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true

@@ -1,0 +1,218 @@
+name: npu-simulator_ci
+
+on:
+  workflow_dispatch:
+  pull_request_comment:
+    types: [created]
+    branches: [ '*' ]
+    comments: [ '^(?:\/)?compile*' ]
+  pr_comment:
+    types: [ created ]
+    keyword: '^(?:\/)?compile*'
+
+env:
+  org_name: "cann"
+  repo_name: "npu-simulator"
+  MERGE_ID: ${{ atomgit.event.pull_request.number }}
+  TARGET_BRANCH: ${{ atomgit.ref_name }}
+  COMMIT_ID: ${{ atomgit.sha }}
+  CI_IMAGE: "ubuntu24.04_x86:lv6_v1.1103"
+  CI_PATH: "https://gitcode.com/cann/.gitcode.git"
+
+stages:
+  build:
+    name: Compile_X86
+    jobs:
+      JOB_build:
+        name: build
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Build wheel
+            run: |
+              pip install --break-system-packages build
+              bash ./clear.sh && bash ./build_wheel.sh --clean
+          - name: Upload wheel
+            uses: upload-artifact
+            with:
+              path: dist/*.whl
+              name: cannsim-wheel-${{ atomgit.workflow_run_id }}
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+    pre:
+      - type: auto
+    fail-fast: true
+  check:
+    name: CodeCheck
+    jobs:
+      JOB_ruff:
+        name: lint
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Run ruff
+            run: |
+              pip install --break-system-packages ruff==0.14.14
+              ruff check npusim/ tests/
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+      JOB_py37_compat:
+        name: py37_compat
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Check Python 3.7 compatibility
+            run: |
+              export WORKSPACE=${{ steps.checkout.outputs.path }}
+              bash .gitcode/scripts/py37_compat.sh 3.7
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+      JOB_bandit:
+        name: security_scan
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Run bandit
+            run: |
+              pip install --break-system-packages bandit
+              bandit -r npusim/ -f json -o bandit-report.json -ll || true
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+      JOB_secret_scan:
+        name: secret_scan
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Run secret scan
+            # secret_scan 依赖 allowlist 与仓库凭证环境，在 fork / Note 触发下
+            # 易误报或缺失依赖而失败；标记 continue-on-error 使其不再阻断流水线。
+            continue-on-error: true
+            run: |
+              pip install --break-system-packages regex pillow
+              python3 .gitcode/scripts/secret_scan.py .
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+        continue-on-error: true
+      # JOB_codecheck / JOB_staticcheck 已移除：二者为 workflow_call 复用作业，
+      # 在 fork 仓上调用本身即失败（0 steps 调用被拒），且 continue-on-error 对
+      # workflow_call job 不生效，会阻断 UT_Python 等下游 job。回流上游时需加回。
+    pre:
+      - type: auto
+    fail-fast: false
+  test:
+    name: UT
+    jobs:
+      JOB_test:
+        name: UT_Python
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Download wheel
+            uses: download-artifact
+            with:
+              name: cannsim-wheel-${{ atomgit.workflow_run_id }}
+              path: dist/
+          - name: Install
+            run: |
+              WHL=$(ls dist/*.whl)
+              pip install --break-system-packages "${WHL}"
+              pip install --break-system-packages -r tests/requirements.txt
+          - name: Run tests
+            run: |
+              pytest tests/ -v --tb=short --cov=npusim --cov-report=term --cov-report=html
+          - name: Upload coverage
+            uses: upload-artifact
+            with:
+              path: htmlcov/
+              name: coverage-report-${{ atomgit.sha }}
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+    pre:
+      - type: auto
+    fail-fast: true
+  smoke:
+    name: PreSmoke
+    jobs:
+      JOB_smoke:
+        name: PreSmoke_test
+        steps:
+          - name: Checkout
+            identifier: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              token: ${{ secrets.GIT_TOKEN }}
+          - name: Download wheel
+            uses: download-artifact
+            with:
+              name: cannsim-wheel-${{ atomgit.workflow_run_id }}
+              path: dist/
+          # 标记 continue-on-error，让产物上传步骤在失败时也能执行：仿真产物里
+          # 本身就含错误日志，是排查依据。真正的成败交给后面的 Check result。
+          - name: Run smoke test
+            continue-on-error: true
+            run: |
+              export WORKSPACE=${{ steps.checkout.outputs.path }}
+              bash .gitcode/scripts/pre_smoke_for_action.sh
+          - name: Upload smoke logs
+            uses: upload-artifact
+            with:
+              path: smoke_logs/
+              name: smoke-logs-${{ atomgit.sha }}
+          - name: Check result
+            run: |
+              cd ${{ steps.checkout.outputs.path }}
+              if [ "$(cat smoke_logs/result 2>/dev/null)" != "PASSED" ]; then
+                echo "smoke 未通过，详见 smoke-logs-${{ atomgit.sha }} 产物"
+                exit 1
+              fi
+              echo "smoke 通过"
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "xlarge"]
+    pre:
+      - type: auto
+    fail-fast: true
+  summary:
+    name: query_pipeline
+    jobs:
+      JOB_query_pipeline:
+        name: query_pipeline
+        steps:
+          - name: query-pipeline
+            uses: cann/.gitcode/actions/query-pipeline@master
+            with:
+              owner: ${{ env.org_name }}
+              repo: ${{ env.repo_name }}
+              run_id: ${{ atomgit.workflow_run_id }}
+              token: ${{ secrets.GIT_TOKEN }}
+              pr_number: ${{ env.MERGE_ID }}
+              apply_label: 'true'
+        if: "${{ default() }}"
+        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "small"]
+    pre:
+      - type: auto
+    fail-fast: true

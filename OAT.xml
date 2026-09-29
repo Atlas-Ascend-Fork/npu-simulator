@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--   Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+       Licensed under the Apache License, Version 2.0 (the "License");
+       you may not use this file except in compliance with the License.
+       You may obtain a copy of the License at
+           http://www.apache.org/licenses/LICENSE-2.0
+       Unless required by applicable law or agreed to in writing, software
+       distributed under the License is distributed on an "AS IS" BASIS,
+       WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+       See the License for the specific language governing permissions and
+       limitations under the License.
+-->
+
+<configuration>
+    <oatconfig>
+        <licensefile></licensefile>
+        <policylist>
+            <policy name="projectPolicy" desc="">
+                <policyitem type="license" name="Apache-2.0" path=".*" desc="Default repository license"/>
+                <policyitem type="copyright" name="Huawei Technologies Co., Ltd." path=".*" rule="may" group="defaultGroup" filefilter="copyrightPolicyFilter" desc="Huawei copyright"/>
+            </policy>
+        </policylist>
+        <filefilterlist>
+            <filefilter name="defaultFilter" desc="Files not to check">
+                <filteritem type="filename" name="*.png" desc="Binary image files"/>
+                <filteritem type="filename" name="pyproject.toml" desc="Build config, no license header needed"/>
+                <filteritem type="filename" name="requirements.txt" desc="Dependency pin file, no license header needed"/>
+                <filteritem type="filename" name="Third_Party_Open_Source_Software_List.yaml" desc="Third-party OSS inventory, no license header needed"/>
+                <filteritem type="filename" name="Third_Party_Open_Source_Software_Notice" desc="Third-party license notice, contains non-Apache licenses"/>
+            </filefilter>
+            <filefilter name="defaultPolicyFilter" desc="Filters for compatibility，license header policies">
+                <filteritem type="filename" name="pyproject.toml" desc="Build config, no license header needed"/>
+                <filteritem type="filename" name="requirements.txt" desc="Dependency pin file, no license header needed"/>
+                <filteritem type="filename" name="Third_Party_Open_Source_Software_List.yaml" desc="Third-party OSS inventory, no license header needed"/>
+                <filteritem type="filename" name="Third_Party_Open_Source_Software_Notice" desc="Third-party license notice, contains non-Apache licenses"/>
+            </filefilter>
+            <filefilter name="copyrightPolicyFilter" desc="Filters for copyright header policies">
+                <filteritem type="filename" name="pyproject.toml" desc="Build config"/>
+                <filteritem type="filename" name="requirements.txt" desc="Dependency pin file"/>
+                <filteritem type="filename" name="Third_Party_Open_Source_Software_List.yaml" desc="Third-party OSS inventory"/>
+                <filteritem type="filename" name="Third_Party_Open_Source_Software_Notice" desc="Third-party license notice"/>
+            </filefilter>
+            <filefilter name="licenseFileNamePolicyFilter" desc="Filters for LICENSE file policies">
+            </filefilter>
+            <filefilter name="readmeFileNamePolicyFilter" desc="Filters for README file policies">
+            </filefilter>
+            <filefilter name="readmeOpenSourcefileNamePolicyFilter" desc="Filters for README.OpenSource file policies">
+            </filefilter>
+            <filefilter name="binaryFileTypePolicyFilter" desc="Filters for binary file policies">
+                <filteritem type="filename" name="*.png" desc="Binary image files"/>
+            </filefilter>
+
+        </filefilterlist>
+    </oatconfig>
+</configuration>

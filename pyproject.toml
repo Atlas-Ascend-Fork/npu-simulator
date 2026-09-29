@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 120
+target-version = "py37"
+
+[tool.ruff.lint]
+select = [
+    "F",    # pyflakes
+    "E9",   # syntax errors
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.bandit]
+exclude_dirs = [".git", ".venv", "build", "dist", "htmlcov", "tests", "docs"]
+skips = ["B608"]

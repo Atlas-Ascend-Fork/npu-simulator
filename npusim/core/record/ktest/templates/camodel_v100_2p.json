@@ -1,0 +1,10 @@
+{
+    "sysconf": {
+        "esl_top_thread_cnt": 17,
+        "number_of_chip": 2,
+        "chip_type": "{2, 0}",
+        "global_route_table_file": "./parameter/p2p_route_table_4jetty.csv",
+        "global_port_link_file": "./parameter/p2p_link_table.csv",
+        "ub_memory_en": true
+    }
+}
