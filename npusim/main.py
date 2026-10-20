@@ -91,6 +91,15 @@ def _add_record_parser(subparsers):
         "without accurate timing. If not specified, accurate timing simulation "
         "is used.",
     )
+    parser.add_argument(
+        "--chip",
+        type=int,
+        default=0,
+        help="Number of simulated NPU chips in the comm domain. "
+        "Sets CAMODEL_SIM_RANK_SIZE. When >1 the collective-communication (CC) simulation "
+        "mock stack is auto-enabled (HCCL mock injection + comm env). "
+        "Defaults to $CAMODEL_SIM_RANK_SIZE (or 1).",
+    )
 
 
 def _add_report_parser(subparsers):
@@ -197,6 +206,7 @@ def handle_record_command(args, parser):
         object_file=getattr(args, "object_file", "") or "",
         core_id=getattr(args, "core_id", "") or "",
         model="PV" if args.pv else "CA",
+        chip=getattr(args, "chip", 0) or 0,
     )
     return 0 if record(cfg) else 1
 

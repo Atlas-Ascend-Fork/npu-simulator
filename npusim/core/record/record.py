@@ -57,8 +57,12 @@ from npusim.core.record.presentation import (
 from npusim.core.record.runner import run_user_app_with_dashboard
 from npusim.core.record.runtime import (
     CAMODEL_ASSETS as RECORD_CAMODEL_ASSETS,
+    CC_MAX_CHIP,
     RUNTIME_DIRS as RECORD_RUNTIME_DIRS,
     build_execution_env,
+    cc_chip_of,
+    cc_restore_hccl,
+    cc_swap_hccl,
     prepare_runtime_dirs,
 )
 
@@ -94,6 +98,8 @@ class CannsimRecord:
         self.object_file = cfg.object_file
         self.core_id = cfg.core_id or ""
         self.model = cfg.model
+        self.chip = int(getattr(cfg, "chip", 0) or 0)
+        self.cc_chip = 1
         self.soc_version_mapping = SOC_INFO
 
         # stage1 校验通过后回填：
@@ -354,6 +360,21 @@ class CannsimRecord:
         接 SIGINT：KeyboardInterrupt 时标记 self._interrupted=True，
         调用方 record() 负责打中断提示并归档已产出的部分资产。
         """
+        # Multi-device CC chip count: --chip overrides env; otherwise use $CAMODEL_SIM_RANK_SIZE.
+        if self.chip and self.chip > 0:
+            os.environ["CAMODEL_SIM_RANK_SIZE"] = str(self.chip)
+            self.cc_chip = self.chip
+        else:
+            self.cc_chip = cc_chip_of(os.environ)
+
+        if self.cc_chip > CC_MAX_CHIP:
+            print_error(
+                f"CC chip count {self.cc_chip} exceeds the max supported {CC_MAX_CHIP} "
+                "(HcclCombinOpParam950 windowsIn capacity); "
+                "reduce --chip / CAMODEL_SIM_RANK_SIZE."
+            )
+            return False
+
         try:
             env = build_execution_env(
                 os.environ,
@@ -364,6 +385,7 @@ class CannsimRecord:
                 is_python_launch,
                 object_file=self.object_file,
                 model=self.model,
+                cc_chip=self.cc_chip,
             )
         except RecordPathError as e:
             print_error(str(e))
@@ -373,35 +395,44 @@ class CannsimRecord:
         log_path = str(self.cannsim_log)
         print()
         start_t = time()
+
+        # Temporarily point the real-CANN libhccl_fwk.so at the CC mock so the op-host
+        # path-based dlopen hits it; ALWAYS restored (even on interrupt/exception).
+        hccl_handle = None
+        if self.cc_chip > 1:
+            hccl_handle = cc_swap_hccl(env, self.origin_soc_version)
         try:
-            cmdline = " ".join(shlex.quote(x) for x in argv)
-            result = run_user_app_with_dashboard(
-                argv,
-                env=env,
-                cwd=str(app_cwd),
-                log_path=log_path,
-                title=f"{cmdline} · {self.origin_soc_version}",
-            )
-        except KeyboardInterrupt:
-            self._interrupted = True
+            try:
+                cmdline = " ".join(shlex.quote(x) for x in argv)
+                result = run_user_app_with_dashboard(
+                    argv,
+                    env=env,
+                    cwd=str(app_cwd),
+                    log_path=log_path,
+                    title=f"{cmdline} · {self.origin_soc_version}",
+                )
+            except KeyboardInterrupt:
+                self._interrupted = True
+                self._last_run_elapsed = time() - start_t
+                print_warn(f"Interrupted by user after {self._last_run_elapsed:.1f}s; partial assets will be archived.")
+                return False
+
+            self._last_dashboard = result.dashboard
+            self._last_stderr_tail = result.stderr_tail
+            self._last_returncode = result.returncode
+            self._interrupted = result.interrupted
             self._last_run_elapsed = time() - start_t
-            print_warn(f"Interrupted by user after {self._last_run_elapsed:.1f}s; partial assets will be archived.")
+
+            if result.interrupted:
+                print_warn(f"Interrupted by user after {self._last_run_elapsed:.1f}s; partial assets will be archived.")
+                return False
+
+            if result.success:
+                return True
+
             return False
-
-        self._last_dashboard = result.dashboard
-        self._last_stderr_tail = result.stderr_tail
-        self._last_returncode = result.returncode
-        self._interrupted = result.interrupted
-        self._last_run_elapsed = time() - start_t
-
-        if result.interrupted:
-            print_warn(f"Interrupted by user after {self._last_run_elapsed:.1f}s; partial assets will be archived.")
-            return False
-
-        if result.success:
-            return True
-
-        return False
+        finally:
+            cc_restore_hccl(hccl_handle)
 
     # --------------- Stage 3 开场白 ---------------
 

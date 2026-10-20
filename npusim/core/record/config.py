@@ -33,6 +33,7 @@ class RecordConfig:
     object_file: str = ""
     core_id: str = ""
     model: str = "CA"
+    chip: int = 0
 
 
 def normalize_gen_report(raw) -> str:
@@ -79,4 +80,5 @@ def build_record_config_from_args(args) -> RecordConfig:
         object_file=getattr(args, "object_file", "") or "",
         core_id=getattr(args, "core_id", "") or "",
         model="PV" if getattr(args, "pv", False) else "CA",
+        chip=getattr(args, "chip", 0) or 0,
     )
