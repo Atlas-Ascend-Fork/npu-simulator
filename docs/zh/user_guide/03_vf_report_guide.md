@@ -79,8 +79,8 @@ npusim_out/
 | `ipc.exec/ldst` | 执行 / 访存 IPC 分量 |
 | `ipc.scalar` 或 `ipc.branch` | simd 有 scalar，simt 有 branch |
 | `ipc.total` | 各分量之和（参考值） |
-| `instruction_profile.total_count` | VF 内向量指令总数 |
-| `instruction_profile.by_pipe[]` | 按 pipe 分类的指令统计（pipe/count/pct/ticks） |
+| `instr_profile.total_count` | VF 内向量指令总数 |
+| `instr_profile.by_pipe[]` | 按 pipe 分类的指令统计（pipe/count/pct/ticks） |
 
 > VF 按**函数入口 PC** 分组：编译器展开循环时，同一 VF 函数可能有多个 call-site PC，但它们共享相同的函数体代码。报告将这些调用合并为一个 VF 条目。
 
@@ -127,13 +127,13 @@ jq '.vfs[] | {id, type, function_pc, call_sites, executions, exec: .ipc.exec, ld
 ### 4.3 找出 exec IPC 最差的 VF
 
 ```bash
-jq '.vfs[0] | {id, type, function_pc, ipc, instruction_profile}' $VF_JSON
+jq '.vfs[0] | {id, type, function_pc, ipc, instr_profile}' $VF_JSON
 ```
 
 ### 4.4 查看某个 VF 的指令 pipe 分布
 
 ```bash
-jq '.vfs[] | select(.id == 0) | .instruction_profile.by_pipe[] | {pipe, pct, ticks}' $VF_JSON
+jq '.vfs[] | select(.id == 0) | .instr_profile.by_pipe[] | {pipe, pct, ticks}' $VF_JSON
 ```
 
 ### 4.5 只看某一执行模式的 VF（如 SIMT）
@@ -173,7 +173,7 @@ jq '[.timeline[] | select(.vf_function_pc == "0x304")] | group_by(.pipe) | map({
 1. `jq '.kernel.exec_time_ns'` — 整体耗时是否符合预期
 2. `jq '.vfs[0]'` — 定位 exec IPC 最差的 VF 函数
 3. 看 `ipc.exec` / `ipc.ldst` — 判断算力利用率与访存占比
-4. 看 `instruction_profile.by_pipe` — 了解指令组成
+4. 看 `instr_profile.by_pipe` — 了解指令组成
 5. 用 `timeline` 按 `vf_function_pc` 过滤 — 查看具体指令执行时序
 6. 区分 `type`（simd/simt）— 按执行模式分别分析
 
