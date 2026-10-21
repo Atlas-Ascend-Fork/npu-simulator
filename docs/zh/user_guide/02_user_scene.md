@@ -33,8 +33,8 @@ cmake --build build --target vector_add
 
 2、进入可执行文件目录，运行仿真命令。
 ```bash
-# 进入build目录，执行如下仿真命令。
-cd build/
+# 进入vector_add构建产物目录，执行如下仿真命令。
+cd build/Samples/0_Introduction/vector_add/
 npusim record ./vector_add -s Ascend950 -g
 ```
 
