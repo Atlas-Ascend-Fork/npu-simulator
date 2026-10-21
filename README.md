@@ -26,6 +26,7 @@ NPUSim（全称NPU Simulator）是一款面向算子开发场景的SoC级芯片�
 
 ```bash
 git clone https://gitcode.com/cann/npu-simulator.git
+cd npu-simulator
 ```
 
 如需贡献，请先 fork 本仓库到个人账户，再从 fork 克隆并提交 PR，详见[贡献指南](#-贡献指南)。
@@ -87,6 +88,8 @@ CANN 安装完成后，编译 npusim 并覆盖安装：
 bash ./clear.sh && bash ./build_wheel.sh
 pip3 install dist/*.whl --upgrade -t ${install_path}/python/site-packages/
 ```
+
+上述构建与安装命令均在 `npu-simulator` 仓库根目录执行。
 
 其中 `${install_path}` 为 CANN 安装路径，root 用户默认为 `/usr/local/Ascend`。
 
