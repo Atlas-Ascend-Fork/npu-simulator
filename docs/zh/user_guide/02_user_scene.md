@@ -44,7 +44,7 @@ Vector add completed successfully!
 Parallel Simulation: All threads are joined.
 ```
 
-4、查看仿真报告进行性能分析，具体操作请参考《用户指南》的 [指令流水图](./01_user_guide.md/#指令流水图) 分析。
+4、查看仿真报告进行性能分析，具体操作请参考《用户指南》的 [指令流水图](./01_user_guide.md#指令流水图) 分析。
 
 
 ---
@@ -108,4 +108,4 @@ OK
 Parallel Simulation: All threads are joined.
 ```
 
-4、查看仿真报告进行性能分析，具体操作请参考《用户指南》的 [指令流水图](./01_user_guide.md/#指令流水图) 分析。
+4、查看仿真报告进行性能分析，具体操作请参考《用户指南》的 [指令流水图](./01_user_guide.md#指令流水图) 分析。

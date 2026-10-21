@@ -4,7 +4,7 @@
 
 ## 使用前准备
 
-本章使用的 vector_add 用例已内置在本仓库 [tests/st/Samples/0_Introduction/vector_add](../../tests/st/Samples/0_Introduction/vector_add/main.asc) 目录，无需从外部仓库下载。
+本章使用的 vector_add 用例已内置在本仓库 [tests/st/Samples/0_Introduction/vector_add](../../../tests/st/Samples/0_Introduction/vector_add/main.asc) 目录，无需从外部仓库下载。
 
 ## 环境准备
 

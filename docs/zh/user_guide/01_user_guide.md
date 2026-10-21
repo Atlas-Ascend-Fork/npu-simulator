@@ -67,7 +67,7 @@ npusim record --help
 
 4. 用户可以获取算子执行结果，并进行精度的对比，结果展示在`npusim.log`，示例如下
 
-    以下输出为 Ascend C 单算子直调精度比较结果实录，节选自本仓库 [tests/st/Samples/0_Introduction/matmul](../../tests/st/Samples/0_Introduction/matmul/main.asc) 样例（复现命令：`npusim record -s Ascend950 ./matmul -u '256 256 256' -g`）的仿真日志；因算子与版本不同略有差异，请以实际输出为准。
+    以下输出为 Ascend C 单算子直调精度比较结果实录，节选自本仓库 [tests/st/Samples/0_Introduction/matmul](../../../tests/st/Samples/0_Introduction/matmul/main.asc) 样例（复现命令：`npusim record -s Ascend950 ./matmul -u '256 256 256' -g`）的仿真日志；因算子与版本不同略有差异，请以实际输出为准。
 
     ```text
     max abs diff: 0.0
