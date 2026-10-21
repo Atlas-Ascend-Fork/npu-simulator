@@ -30,8 +30,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-              token: ${{ secrets.GIT_TOKEN }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
           - name: Build wheel
             run: |
               pip install --break-system-packages build
@@ -56,8 +56,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-              token: ${{ secrets.GIT_TOKEN }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
           - name: Run ruff
             run: |
               pip install --break-system-packages ruff==0.14.14
@@ -71,8 +71,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-              token: ${{ secrets.GIT_TOKEN }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
           - name: Check Python 3.7 compatibility
             run: |
               export WORKSPACE=${{ steps.checkout.outputs.path }}
@@ -86,8 +86,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-              token: ${{ secrets.GIT_TOKEN }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
           - name: Run bandit
             run: |
               pip install --break-system-packages bandit
@@ -101,8 +101,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-              token: ${{ secrets.GIT_TOKEN }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
           - name: Run secret scan
             # secret_scan 依赖 allowlist 与仓库凭证环境，在 fork / Note 触发下
             # 易误报或缺失依赖而失败；标记 continue-on-error 使其不再阻断流水线。
@@ -129,8 +129,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-              token: ${{ secrets.GIT_TOKEN }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              allow-unsafe-pr-checkout: true
           - name: Download wheel
             uses: download-artifact
             with:
@@ -164,7 +164,8 @@ stages:
             identifier: checkout
             uses: checkout
             with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || }}
+              allow-unsafe-pr-checkout: true
               token: ${{ secrets.GIT_TOKEN }}
           - name: Download wheel
             uses: download-artifact

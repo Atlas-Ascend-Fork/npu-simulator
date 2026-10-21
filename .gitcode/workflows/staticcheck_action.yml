@@ -19,8 +19,8 @@ jobs:
         identifier: process_checkout
         uses: checkout
         with:
-          ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
-          token: ${{ secrets.GIT_TOKEN }}
+          ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+          allow-unsafe-pr-checkout: true
       - name: get_pr
         identifier: get_pr
         uses: cann/.gitcode/actions/get-pr@master
