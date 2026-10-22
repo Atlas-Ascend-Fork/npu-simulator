@@ -130,7 +130,7 @@ NPUSim 通过一些典型案例帮助您理解并使用工具，具体案例请�
 
 ## 💬 问题反馈
 
-- 问题反馈：通过 GitCode [Issues](./issues) 提交。
+- 问题反馈：通过 GitCode [Issues](https://gitcode.com/cann/npu-simulator/issues) 提交。
 - 社区互动：通过 GitCode [讨论](https://gitcode.com/org/cann/discussions) 参与交流。
 
 ## 🤝 建议与交流
