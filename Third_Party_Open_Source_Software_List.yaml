@@ -1,11 +1,1 @@
-observability:
-  numpy:
-    cpeName: numpy
-    groupId:
-    url: https://github.com/numpy/numpy.git
-    version: ">=1.21"
-  plotly:
-    cpeName: plotly
-    groupId:
-    url: https://github.com/plotly/plotly.py
-    version: ">=5.0"
+# No third-party open-source dependencies are currently used by this repository.
