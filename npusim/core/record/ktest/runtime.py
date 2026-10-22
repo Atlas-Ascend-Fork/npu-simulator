@@ -28,6 +28,7 @@ from npusim.core.public.comm import print_error, print_info, print_warn
 from npusim.core.record.paths import RecordPathError
 from npusim.core.record.runtime import (
     _find_cannsim_helper_lib as _find_helper_lib,
+    _find_or_build_scope_filter,
     _prepend_ld_preload,
     _REPORT_ARCH_BY_SOC as _HELPER_REPORT_ARCH,
 )
@@ -267,6 +268,11 @@ def build_execution_env(
             "  Install the library, or set CANNSIM_HELPER_LIB to its full path.",
             {"camodel_path": str(camodel_path)},
         )
+
+    scope_filter = _find_or_build_scope_filter()
+    if scope_filter is not None:
+        env["LD_PRELOAD"] = _prepend_ld_preload(env.get("LD_PRELOAD", ""), scope_filter)
+        print_info(f"dlopen scope filter enabled (ktest): {scope_filter}")
 
     env["LD_PRELOAD"] = _prepend_ld_preload(
         env.get("LD_PRELOAD", ""),

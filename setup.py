@@ -48,6 +48,9 @@ setup(
         "npusim": [
             "exclude_instr.toml",
         ],
+        "npusim.core.record": [
+            "dlopen_scope_filter.c",
+        ],
         "npusim.core.record.ktest": [
             "templates/*.json",
         ],

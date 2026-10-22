@@ -22,6 +22,7 @@ from typing import Optional
 import os
 import shutil
 import json
+import subprocess
 
 from npusim.core.public.comm import print_error, print_info, print_warn
 from npusim.core.public.soc_info import cores_to_mask
@@ -109,6 +110,53 @@ def _prepend_ld_preload(existing: str, library: Path) -> str:
     if existing:
         parts.append(existing)
     return " ".join(parts)
+
+
+_SCOPE_FILTER_SRC = "dlopen_scope_filter.c"
+_SCOPE_FILTER_LIB = "libdlopen_scope_filter.so"
+
+
+def _find_or_build_scope_filter() -> Optional[Path]:
+    """查找（或现场编译）dlopen 作用域过滤器，供 LD_PRELOAD 前置使用。
+
+    CANN 的 libascendcl.so 以 RTLD_GLOBAL 方式 dlopen libacl_rt.so；仿真环境下
+    LD_LIBRARY_PATH 前置 camodel 目录，使 libacl_rt 的依赖闭包解析到模拟器 stub 链
+    （libTgWrapper/libge_compiler，导出旧 ABI 的 libstdc++ weak 符号）。整链被提升进
+    全局作用域后，同进程第三方新 ABI 代码的 std::regex 等符号会被旧副本插入，触发
+    std::bad_alloc。过滤器剥掉这些库的 RTLD_GLOBAL 位，让闭包留在私有作用域
+    （与上板进程行为一致）。NPUSIM_SCOPE_FILTER=0 可关闭。
+    """
+    if os.environ.get("NPUSIM_SCOPE_FILTER", "1") == "0":
+        return None
+    module_dir = Path(__file__).resolve().parent
+    candidates = [
+        Path(os.environ["NPUSIM_SCOPE_FILTER_LIB"]) if os.environ.get("NPUSIM_SCOPE_FILTER_LIB") else None,
+        module_dir / _SCOPE_FILTER_LIB,
+    ]
+    found = next(_dedupe_existing_files(candidates), None)
+    if found is not None:
+        return found
+    src = module_dir / _SCOPE_FILTER_SRC
+    if not src.is_file():
+        print_warn(f"dlopen scope filter source not found: {src}")
+        return None
+    cache_lib = Path.home() / ".cache" / "npusim" / _SCOPE_FILTER_LIB
+    try:
+        cache_lib.parent.mkdir(parents=True, exist_ok=True)
+        if not cache_lib.is_file() or cache_lib.stat().st_mtime < src.stat().st_mtime:
+            cc = shutil.which("cc") or shutil.which("gcc")
+            if cc is None:
+                print_warn("no cc/gcc available, skip dlopen scope filter")
+                return None
+            subprocess.run(
+                [cc, "-shared", "-fPIC", "-O2", "-o", str(cache_lib), str(src)],
+                check=True,
+                capture_output=True,
+            )
+    except Exception as e:
+        print_warn(f"failed to build dlopen scope filter: {e}")
+        return None
+    return cache_lib
 
 
 # Collective-communication (CC) simulation mock stack (opts-in automatically when chip count > 1).
@@ -302,6 +350,13 @@ def build_execution_env(
             "  Install the library, or set CANNSIM_HELPER_LIB to its full path.",
             {"ca_model_path": str(ca_model_path)},
         )
+
+    scope_filter = _find_or_build_scope_filter()
+    if scope_filter is not None:
+        # 过滤器先前置、helper 后前置；helper 自身不定义 dlopen 符号，
+        # 二者顺序不影响 dlopen 插入（全局作用域中首个定义者生效）。
+        env["LD_PRELOAD"] = _prepend_ld_preload(env.get("LD_PRELOAD", ""), scope_filter)
+        print_info(f"dlopen scope filter enabled: {scope_filter}")
 
     env["LD_PRELOAD"] = _prepend_ld_preload(
         env.get("LD_PRELOAD", ""),
