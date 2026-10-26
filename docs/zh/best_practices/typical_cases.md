@@ -73,7 +73,7 @@ python3 gen_data.py 256 256 256
 ```bash
 npusim record -s Ascend950 ./matmul_tutorial_mxfp4_base -u '256 256 256' -g
 ```
-- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到GM→L1 搬运与 L1→L0 搬运及 MMAD 计算 完全串行，流水没有重叠，硬件利用率低下。示意图如下：
+- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到GM→L1 搬运与 L1→L0 搬运及 MMAD 计算 完全串行，流水没有重叠，硬件利用率低下。
 
 
 3、针对上述问题，可以采用Double-Buffer、SWAT 调度优化等方法进行算子性能优化，具体参考[matmul_stroy](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例代码。
@@ -83,4 +83,4 @@ npusim record -s Ascend950 ./matmul_tutorial_mxfp4_base -u '256 256 256' -g
 npusim record -s Ascend950 ./matmul_tutorial_mxfp4_a_fullload -u '256 256 256' -g
 ```
 
-- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到流水已经并行，硬件利用率提升，示意图如下：
+- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到流水已经并行，硬件利用率提升。
