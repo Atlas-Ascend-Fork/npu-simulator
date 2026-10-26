@@ -33,7 +33,6 @@ setup(
     python_requires=">=3.7",
     package_dir={"npusim": "npusim"},
     packages=packages,
-    install_requires=[],
     exclude_package_data={
         "npusim": ["setup.py", "build_wheel.sh"],
     },
@@ -56,6 +55,10 @@ setup(
         ],
         "npusim.prof_demo": [
             "schema.sql",
+        ],
+        "npusim.prof": [
+            "src/sql/*.sql",
+            "static/arch_diagrams/**/*.svg",
         ],
     },
 )

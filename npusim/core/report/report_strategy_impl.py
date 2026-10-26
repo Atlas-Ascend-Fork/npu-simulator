@@ -20,6 +20,9 @@ from typing import List, Optional, Tuple
 
 from npusim.core.report.prof_demo_backend import prof_demo_available, run_prof_demo
 from npusim.core.report.report_strategy_base import (
+    BIPROF_BACKEND_NAME,
+    get_biprof_runner_module,
+    PROF_DEMO_BACKEND_NAME,
     ReportStrategy,
     SOC_TO_ARCH,
 )
@@ -31,14 +34,48 @@ from npusim.core.report.report_strategy_base import (
 
 
 class BiProfModuleStrategy(ReportStrategy):
-    """Report backend. Name is kept so existing post-processing still runs.
-
-    Generation itself is prof_demo. The old BiProfRunner / plotly path is not called.
-    """
+    """Layer 1: BiProfRunner pure-Python module."""
 
     @property
     def name(self) -> str:
-        return "BiProfRunner module"
+        return BIPROF_BACKEND_NAME
+
+    def is_available(self) -> bool:
+        return get_biprof_runner_module() is not None
+
+    def execute(
+        self,
+        biprof_args: List[str],
+        _export_abs: Path,
+        _output_abs: Path,
+        _core_ids: tuple,
+    ) -> Tuple[str, bool]:
+        from npusim.core.public.comm import print_info, print_warn
+
+        _runner = get_biprof_runner_module()
+        if _runner is None:
+            return (self.name, False)
+        print_info("Running ProfRunner module...")
+        try:
+            retcode = _runner.run(biprof_args)
+        except Exception as e:
+            print_warn(f"Failed to run ProfRunner module: {e}")
+            return (self.name, False)
+
+        if retcode == 0:
+            print_info("Report generation completed successfully.")
+            return (self.name, True)
+
+        print_warn(f"BiProfRunner module failed (return code {retcode}).")
+        return (self.name, False)
+
+
+class ProfDemoStrategy(ReportStrategy):
+    """Layer 2: stdlib-only prof_demo fallback (JSON reports)."""
+
+    @property
+    def name(self) -> str:
+        return PROF_DEMO_BACKEND_NAME
 
     def is_available(self) -> bool:
         return prof_demo_available()
@@ -132,15 +169,16 @@ def _format_backend_failure_message(output_abs: Path) -> str:
         )
     return (
         "No report backend succeeded.\n"
-        "Searched: prof_demo.\n"
-        "Please install the cannsim wheel that includes prof_demo."
+        "Searched: Python module BiProfRunner, prof_demo.\n"
+        "Please reinstall the cannsim wheel that provides both report backends."
     )
 
 
-# Pre-built chain
+# Pre-built chain: full BiProfRunner report first, stdlib-only prof_demo fallback.
 REPORT_CHAIN = FallbackChain(
     [
         BiProfModuleStrategy(),
+        ProfDemoStrategy(),
     ]
 )
 
@@ -151,6 +189,7 @@ REPORT_CHAIN = FallbackChain(
 # --------------------------------------------------------------------------
 _ReportStrategy = ReportStrategy
 _BiProfModuleStrategy = BiProfModuleStrategy
+_ProfDemoStrategy = ProfDemoStrategy
 _FallbackChain = FallbackChain
 _REPORT_CHAIN = REPORT_CHAIN
 _SOC_TO_ARCH = SOC_TO_ARCH

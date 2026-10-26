@@ -627,7 +627,7 @@ for _case in "${SAMPLE_CASES[@]}"; do
     [ -n "$(find "${_out}" \( -name 'chip*.db' -o -name 'cannsim_helper.log' \) -type f 2>/dev/null | head -1)" ]
     check $? "记录到 cannsim_helper DB 产物（chip*.db / cannsim_helper.log）"
 
-    [ -n "$(find "${_out}" -type d -name 'kernel_*_reports' 2>/dev/null | head -1)" ]
+    [ -n "$(find "${_out}" -type d -name '*_reports' 2>/dev/null | head -1)" ]
     check $? "生成性能报告（-g）"
 done
 

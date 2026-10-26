@@ -208,8 +208,17 @@ _NON_CORE_FILES = frozenset(
 
 
 def _is_pending_core_file(child: Path) -> bool:
-    """判断文件是否是需要按 core 归类的 per-core 报告文件。"""
-    return child.is_file() and child.name not in _NON_CORE_FILES and _CORE_FILE_RE.match(child.name) is not None
+    """判断文件是否是需要按 core 归类的 per-core 报告文件。
+
+    ``*.npu-rep`` 归档除外:stage 3 会把它们写进 ``*_reports/`` 目录
+    (先于本重组执行),即便文件名碰巧匹配 core 模式也不能被移动。
+    """
+    return (
+        child.is_file()
+        and child.name not in _NON_CORE_FILES
+        and not child.name.endswith(".npu-rep")
+        and _CORE_FILE_RE.match(child.name) is not None
+    )
 
 
 def _reorganize_reports_by_core(output_abs: Path) -> None:

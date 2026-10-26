@@ -24,7 +24,7 @@ BiProfModuleStrategy
 
 | 后端 | 依赖 | 产出 | 保真度 |
 |------|------|------|--------|
-| BiProfRunner 模块 | plotly + C 扩展 | HTML 报告 + tracing JSON | 高 |
+| BiProfRunner 模块 | 纯 Python（标准库） | HTML/JSON 报告 + tracing JSON | 高 |
 
 > 旧版设计曾包含额外报告后端；当前实现不再查找或调用它们。
 
@@ -32,7 +32,7 @@ BiProfModuleStrategy
 
 | 文件 | 职责 | 关键符号 |
 |------|------|----------|
-| `report_strategy_base.py` | 抽象基类 `ReportStrategy`、后端检测（plotly/BiProfRunner 延迟导入）、SoC→Arch 映射 | `ReportStrategy`, `get_biprof_runner_module()`, `SOC_TO_ARCH` |
+| `report_strategy_base.py` | 抽象基类 `ReportStrategy`、后端检测（BiProfRunner 延迟导入）、SoC→Arch 映射 | `ReportStrategy`, `get_biprof_runner_module()`, `SOC_TO_ARCH` |
 | `report_strategy_impl.py` | 具体策略类 `BiProfModuleStrategy`、执行链 `FallbackChain`、向后兼容别名 | `REPORT_CHAIN`, `_REPORT_CHAIN` |
 | `report_path.py` | 路径解析校验、instr.bin / log_ca 查找、BiProfRunner 参数构建、core_id 解析、报告目录重组、tracing report 收集与重命名 | `_resolve_paths()`, `_find_instr_bin()`, `_build_biprof_args()`, `_reorganize_reports_by_core()`, `_collect_trace_reports()` |
 | `report.py` | 主编排 `generate_report()`：路径解析 → 日志源查找 → core_id 解析 → 参数构建 → 后端执行 → 产物重组 | `generate_report()`, `report()` |
@@ -40,7 +40,7 @@ BiProfModuleStrategy
 ### 为什么把 base 和 impl 分开？
 
 `report_strategy_base.py` 只包含抽象定义和依赖检测，**不导入任何具体策略类**。这样：
-- 只需要判断后端可用性的模块不会意外触发 BiProfRunner / plotly 的重导入链。
+- 只需要判断后端可用性的模块不会意外触发 BiProfRunner 的重导入链。
 - 具体策略实现可以独立修改，不影响基类和检测逻辑的稳定性。
 
 ## 主流程（`generate_report`）

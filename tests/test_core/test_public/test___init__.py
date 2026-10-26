@@ -19,7 +19,7 @@ import unittest
 class InitTests(unittest.TestCase):
     """cannsim/core/public/__init__.py: package marker only; no logic to unit-test."""
 
-    # Importing __init__ triggers full package init with optional deps (psutil, plotly, etc.)
+    # Importing __init__ triggers full package init with optional deps (psutil, etc.)
     # which may not be available. The package structure is validated at import time by CI.
     # No unit-testable logic exists in this __init__.py.
 

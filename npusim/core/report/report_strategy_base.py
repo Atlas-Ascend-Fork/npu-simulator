@@ -20,46 +20,47 @@ This module is intentionally split from the concrete strategy implementations to
 each piece focused and easier to navigate.
 """
 
-import importlib.util
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # --------------------------------------------------------------------------
+# Backend names — single source of truth for post-processing decisions keyed
+# on the backend name (report reorganization, npu-rep export).
+# --------------------------------------------------------------------------
+
+BIPROF_BACKEND_NAME = "BiProfRunner module"
+PROF_DEMO_BACKEND_NAME = "prof_demo"
+
+# Backends whose output layout needs the core-based report reorganization.
+REORGANIZE_BACKENDS = frozenset({BIPROF_BACKEND_NAME, PROF_DEMO_BACKEND_NAME})
+
+# --------------------------------------------------------------------------
 # Backend availability — imported at module level so strategies can reference them.
 # _BiProfRunner_module: lazily resolved by BiProfModuleStrategy.is_available()
-#   (requires plotly); NOT imported at module level to avoid polluting import of
+#   (stdlib-only engine); NOT imported at module level to avoid polluting import of
 #   unrelated modules.
 # --------------------------------------------------------------------------
 
 
-def _check_plotly_available() -> bool:
-    """主动检测当前 Python 环境中 plotly 是否可用。
-
-    在导入 BiProfRunner（它会间接 import plotly）之前调用，
-    避免在运行时才因 plotly 缺失而报错。多 Python 环境下会附带
-    cannsim 实际使用的 Python 路径，方便用户定位。
-    """
-    if importlib.util.find_spec("plotly") is not None:
-        return True
-    _python_path = sys.executable or "python"
-    print(
-        f"HTML report require plotly\n"
-        f"The executable PYTHON PATH: {_python_path}\n"
-        f"Try install Plotly by: {_python_path} -m pip install --force-reinstall plotly\n",
-        file=sys.stderr,
-    )
-    return False
-
-
 def _try_import_biprof_runner():
-    """旧 BiProfRunner 已删除。报告生成走 prof_demo，这里固定返回 None。"""
-    return None
+    """尝试导入 BiProfRunner 模块。
+
+    专供 BiProfModuleStrategy.is_available() 调用，不污染模块级导入。
+
+    Returns:
+        模块对象，或 None（ImportError 时静默跳过，触发 fallback）。
+    """
+    try:
+        from npusim.prof.src.runner import BiProfRunner as _mod  # type: ignore
+
+        return _mod
+    except ImportError:
+        return None
 
 
 # BiProfRunner 模块的缓存：由 _try_import_biprof_runner() 延迟填充，
-# 不再在模块导入时执行，避免影响无需 plotly 的调用路径。
+# 不在模块导入时执行，避免影响无需引擎的调用路径。
 _BiProfRunner_module: Optional[type] = None
 _BiProfRunner_module_resolved: bool = False
 
@@ -67,7 +68,7 @@ _BiProfRunner_module_resolved: bool = False
 def get_biprof_runner_module():
     """延迟获取 BiProfRunner 模块（带缓存）。
 
-    首次调用时执行 plotly 检测 + 模块导入，后续直接返回缓存结果。
+    首次调用时执行模块导入，后续直接返回缓存结果。
     """
     global _BiProfRunner_module, _BiProfRunner_module_resolved
     if not _BiProfRunner_module_resolved:

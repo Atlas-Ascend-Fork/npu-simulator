@@ -398,7 +398,7 @@ class MultiChipReportDbTests(unittest.TestCase):
                 )
 
         text = err.getvalue()
-        self.assertIn("includes prof_demo", text)
+        self.assertIn("reinstall the cannsim wheel", text)
         self.assertIn("prof_demo", text)
 
 

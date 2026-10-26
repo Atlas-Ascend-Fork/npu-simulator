@@ -38,6 +38,7 @@ from npusim.core.report.detections.sync_instruction_detection import (
     format_text as _sync_format_text,
     run as _sync_run,
 )
+from npusim.core.report.report_strategy_base import BIPROF_BACKEND_NAME, REORGANIZE_BACKENDS
 from npusim.core.report.report_strategy_impl import _REPORT_CHAIN
 from npusim.core.report.report_path import (
     _resolve_paths,
@@ -375,6 +376,13 @@ def generate_report(
             仅在单卡模式（multi_chip=False）且 core_id 非空时于此触发；
             多卡模式由上层 ``generate_multi_chip_report`` 在循环结束后统一合并。
 
+    输出（helper DB 路径 + BiProf 模块后端成功时）除 ``results/`` 下各
+    ``*_reports`` 目录外，还会为每个契约 DB 生成一个 ``{db_stem}.npu-rep``
+    归档（DB 表 CSV + manifest.json + 该 kernel 的报告 JSON），位于该 DB
+    对应的 ``results/{...}_reports/`` 目录内；无报告目录时回退到 report
+    输出根目录。由 :mod:`npusim.core.report.npu_rep_export` 以尽力而为
+    方式打包。
+
     Returns:
         bool: 成功返回 True，失败返回 False
     """
@@ -507,10 +515,30 @@ def _run_report_backend(
         core_ids=core_ids,
     )
 
-    # ⑤ 后处理产物目录结构
-    if success and backend == "BiProfRunner module":
+    # ⑤ Stage 3: 每个契约 DB 导出 CSV 并打包 .npu-rep(BiProf 后端专属,尽力而为)。
+    # 必须先于 ⑥ 执行:打包的是引擎原始输出,trace JSON 保留引擎命名
+    # (core_{n}_tracing_report_{i}.json)——.npu-rep 消费方按原始文件名识别;
+    # ⑥ 的重组/重命名(trace_core{n}.json)只服务于磁盘上的 dashboard 布局。
+    if success and backend == BIPROF_BACKEND_NAME and input_db_path is not None:
+        _export_npu_rep(output_abs, input_db_path)
+
+    # ⑥ 后处理产物目录结构(dashboard 布局:core_N/ 子目录 + trace_coreN.json 重命名)
+    if success and backend in REORGANIZE_BACKENDS:
         _reorganize_reports_by_core(output_abs)
     return success
+
+
+def _export_npu_rep(output_abs: Path, input_db_path: Path) -> None:
+    """Stage 3 best-effort: CSV export + .npu-rep packing per contract DB.
+
+    失败只打印告警,不阻断报告主流程。
+    """
+    try:
+        from npusim.core.report.npu_rep_export import export_npu_rep
+
+        export_npu_rep(output_abs, input_db_path)
+    except Exception as e:  # noqa: BLE001 -- best-effort post-processing
+        print_warn(f"npu-rep export skipped: {e}")
 
 
 def _generate_aggregate_report(output_abs: Path) -> None:
@@ -653,6 +681,10 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
     分流：
     - 目录里有 ``chip*_instr.bin`` → 当前多卡 instr.bin 路径
     - 否则走单卡：helper DB（数据合同）或 instr.bin / log_ca
+
+    BiProf 模块后端成功时，每个契约 DB 额外产出 ``{db_stem}.npu-rep`` 归档
+    （位于该 DB 对应的 ``results/{...}_reports/`` 目录内，无报告目录时回退
+    到 report 输出根目录）。
 
     \\b
     Examples:

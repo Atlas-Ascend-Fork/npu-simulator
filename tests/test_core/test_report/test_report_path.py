@@ -103,6 +103,26 @@ class ReportPathTests(unittest.TestCase):
             self.assertFalse(qi_report.exists())
             self.assertTrue((core_dir / "qi_core_0_icache_utilization_report.html").exists())
 
+    def test_reorganize_never_moves_npu_rep_archives(self):
+        """Stage 3 writes {stem}.npu-rep into *_reports/ before reorganize
+        runs; even a stem matching the core-file pattern must stay put."""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            kernel_dir = root / "results" / "kernel_0_reports"
+            kernel_dir.mkdir(parents=True)
+            archive = kernel_dir / "core_2_add.npu-rep"
+            archive.write_bytes(b"npu-rep\0")
+            pending = kernel_dir / "core_2_icache_report.html"
+            pending.write_text("x", encoding="utf-8")
+
+            _reorganize_reports_by_core(root)
+
+            self.assertTrue(archive.is_file())
+            self.assertEqual(archive.read_bytes(), b"npu-rep\0")
+            # The real per-core file next to it is still moved.
+            self.assertFalse(pending.exists())
+            self.assertTrue((kernel_dir / "core_2" / "core_2_icache_report.html").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
