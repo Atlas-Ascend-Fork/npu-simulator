@@ -85,7 +85,7 @@ python3.11 -m venv .venv
 source .venv/bin/activate  # Linux / macOS；Windows 使用 .venv\Scripts\activate
 python -m pip install -e .
 python -m pip install -r tests/requirements.txt
-python -m pip install ruff==0.14.14 "pre-commit>=4.0.0" vermin "oat-py>=1.0.1"
+python -m pip install ruff==0.14.14 "pre-commit>=4.0.0" vermin
 ```
 
 NPUSim 核心功能基于 Python 标准库实现，零外部运行时依赖。测试依赖在 `tests/requirements.txt`；ruff 版本与 `.pre-commit-config.yaml` 一致，后续升级需同步说明。
@@ -125,10 +125,10 @@ bash .gitcode/scripts/py37_compat.sh 3.7
 ### 6. 开源合规检查（OAT）
 
 ```bash
-bash .gitcode/scripts/oat_check.sh
+pre-commit run oat-check
 ```
 
-OAT 和 py37 脚本可能自动安装缺失工具，需联网；OAT 会生成扫描报告。pre-commit 首次运行也需联网下载公开 hooks。基础检查不要求内部账号，但需具备访问公开依赖源的网络条件。
+OAT hook 来自远程 compliance 仓（`HiAgent/compliance`），pre-commit 首次运行会自动克隆该仓并在 hook 虚拟环境中安装 OAT，需联网；OAT 会生成扫描报告。基础检查不要求内部账号，但需具备访问公开依赖源的网络条件。
 
 ### 7. 验证记录
 

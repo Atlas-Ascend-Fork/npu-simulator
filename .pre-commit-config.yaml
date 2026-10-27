@@ -73,15 +73,14 @@ repos:
             "*.py,*.cpp,*.hpp,*.c,*.h,*.md",
           ]
 
-  # OAT 合规性检查 (Open Source Audit Tool)
-  - repo: local
+  # OAT 合规性检查 (Open Source Audit Tool) — 远程 Python hook
+  # 由 pre-commit 自动克隆 compliance 仓并在 hook 虚拟环境中安装 OAT，
+  # 业务仓无需维护脚本，版本由 rev 标签统一管控。
+  - repo: https://gitcode.com/HiAgent/compliance
+    rev: v1.0.6
     hooks:
       - id: oat-check
-        name: OAT Compliance Check
-        entry: bash .gitcode/scripts/oat_check.sh
-        language: system
         pass_filenames: true
-        types: [file]
         stages: [pre-commit]
         verbose: true
 
