@@ -25,9 +25,9 @@ from npusim.prof.src.backend.hints.vector_utilization_hint import VectorUtilizat
 from npusim.prof.src.backend.hints.mix_gm_hint import MixGMHint
 from npusim.prof.src.backend.hints.access_pattern_hint import AccessPatternHint
 from npusim.prof.src.backend.hints.small_grid_hint import SmallGridHint
-from npusim.prof.src.backend.hints.tail_effect_hint import TailEffectHint
+from npusim.prof.src.backend.hints.tail_effect_inter_core_hint import TailEffectInterCoreHint
+from npusim.prof.src.backend.hints.tail_effect_intra_core_hint import TailEffectIntraCoreHint
 from npusim.prof.src.backend.hints.single_core_hint import SingleCoreHint
-from npusim.prof.src.backend.hints.load_imbalance_hint import LoadImbalanceHint
 from npusim.prof.src.backend.hints.aic_underutilization_hint import (
     AicUnderutilizationHint,
 )
@@ -76,9 +76,9 @@ class HintManager(HintManagerBase):
             MixGMHint,
             AccessPatternHint,
             SmallGridHint,
-            TailEffectHint,
+            TailEffectIntraCoreHint,
+            TailEffectInterCoreHint,
             SingleCoreHint,
-            LoadImbalanceHint,
             AicUnderutilizationHint,
             AivUnderutilizationHint,
             LowVecMte2OverlapHint,
