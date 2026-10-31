@@ -79,7 +79,7 @@ def _check_helper_version(input_db_path: Path) -> bool:
 
     for db in dbs:
         try:
-            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
             try:
                 row = con.execute(
                     "SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr = 'helper_version'"
@@ -120,7 +120,7 @@ def _check_contract_version(input_db_path: Path) -> bool:
         return False
     for db in dbs:
         try:
-            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
             try:
                 row = con.execute(
                     "SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr = 'contract_version'"

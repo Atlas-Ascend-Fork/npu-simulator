@@ -193,7 +193,7 @@ def _load_record_instructions(db_path: Path, ops: Optional[frozenset]) -> List[R
     """从单个只读 record DB 加载指令记录。"""
     query, query_params = _record_query(ops)
     try:
-        con = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
+        con = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
     except sqlite3.Error as exc:
         logger.warning("Failed to open record DB %s: %s", db_path, exc)
         return []
@@ -225,7 +225,7 @@ def _load_device_pcs_from_record_db(
         "WHERE SourceInstrAddr IS NOT NULL "
         "ORDER BY ExecInstrCoreId, CoreTypeId, SourceInstrAddr"
     )
-    uri = f"{record_db.as_uri()}?mode=ro"
+    uri = f"{record_db.resolve().as_uri()}?mode=ro"
     result: List[Tuple[str, int]] = []
     try:
         con = sqlite3.connect(uri, uri=True)
