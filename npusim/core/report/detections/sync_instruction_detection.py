@@ -66,6 +66,7 @@ from npusim.core.report.detections.instr_log_parser import (
     RecordInstruction,
     _core_type_to_core_name,
     _SYNC_OPS,
+    _sync_op_order,
     collect_record_instructions,
 )
 from npusim.core.report.detections.log_patterns import CORE_KIND_PAT
@@ -239,14 +240,14 @@ def collect_events(input_path: str) -> List[SyncEvent]:
     """Read sync instructions from the helper record DB and sort them."""
     records = collect_record_instructions(input_path)
     events = [_record_instruction_to_sync_event(record) for record in records if record.is_sync]
-    events.sort(key=lambda event: (event.cycle, event.instr_id))
+    events.sort(key=lambda event: (event.cycle, _sync_op_order(event.op), event.instr_id))
     return events
 
 
 def collect_instr_stream(input_path: str) -> List[InstrEvent]:
     """Read the instruction stream required by redundancy detection from the helper record DB."""
     events = [_record_instruction_to_instr_event(record) for record in collect_record_instructions(input_path)]
-    events.sort(key=lambda event: (event.cycle, event.instr_id))
+    events.sort(key=lambda event: (event.cycle, _sync_op_order(event.op), event.instr_id))
     return events
 
 
@@ -370,15 +371,15 @@ class CrossCoreSyncContainer:
         """Record a MODE0 signal and dispatch it to cores of the same kind."""
         group, idx, kind = self._core_location(core_name)
         info = self._get_info(group, idx, flag_id)
-        # VEC0 是 MODE0 广播的发起位：它保存原始 SET 用于 kernel-end 漏检，
-        # 并立即把信号路由到同组两个 VEC 的 WAIT 队列。
+        # VEC0 originates the MODE0 broadcast: it keeps the raw SET for the
+        # kernel-end miss check and routes the signal to both VECs' WAIT queues.
         if kind == "CUBE":
             info.setVec0.append(ev)
             return
 
         if idx != 0:
-            # 非 VEC0 发出的 MODE0 SET 不是当前实现的广播源；保留在自身队列
-            # 供 pending_sets 检查，避免重复作为同一事件的 WAIT 目标。
+            # A MODE0 SET not issued by VEC0 is not a broadcast source here; keep it
+            # in its own queue for the pending_sets check so it is not consumed twice.
             info.setVec0.append(ev)
             return
 
@@ -815,38 +816,27 @@ class GetBufRule(SyncRule):
 
         # ---- stall detection ----
         # key = (core, buf_id), available = rls_queue.size() + 1 (one implicit initial buffer)
-        # consumed = number of consumed GET_BUF operations
+        # consumed = number of consumed GET_BUF operations.
+        # GET_BUF can proceed only while a free buffer exists: consumed + 1 <= available.
+        # Note: the DB-derived rls_count is the total RLS_BUF count for (core, buf_id),
+        # not the per-GET rlsCount immediate, so it cannot be compared against the
+        # current queue length.
         stall_key = (ev.core, ev.flag_id)
         stall_bs = kernel.buf_stall.setdefault(stall_key, BufSlotState())
         available = len(stall_bs.rls_queue) + 1  # one implicit initial buffer
         consumed = stall_bs.consumed
 
-        if ev.rls_count == 0:
-            # first GET_BUF without a preceding RLS_BUF: check consumed + 1 > available
-            if consumed + 1 > available:
-                hits.append(
-                    _sync_violation(
-                        "BUF_STALL",
-                        kernel.kernel_id,
-                        ev,
-                        f"buf_id={ev.flag_id} first GET_BUF but the implicit buffer is exhausted "
-                        f"(consumed={consumed} >= available={available}), "
-                        f"consecutive GET_BUF without interleaved RLS_BUF will stall",
-                    )
+        if consumed + 1 > available:
+            hits.append(
+                _sync_violation(
+                    "BUF_STALL",
+                    kernel.kernel_id,
+                    ev,
+                    f"buf_id={ev.flag_id} GET_BUF has no free buffer "
+                    f"(consumed={consumed}, available={available}); "
+                    f"consecutive GET_BUF without interleaved RLS_BUF will stall",
                 )
-        else:
-            # rlsCount > 0: require rls_queue.size() >= rls_count and consumed + 1 <= available
-            if len(stall_bs.rls_queue) < ev.rls_count or consumed + 1 > available:
-                hits.append(
-                    _sync_violation(
-                        "BUF_STALL",
-                        kernel.kernel_id,
-                        ev,
-                        f"buf_id={ev.flag_id} GET_BUF waits for sufficient RLS_BUF "
-                        f"(rls_queue={len(stall_bs.rls_queue)} < rls_count={ev.rls_count}, "
-                        f"consumed={consumed}, available={available}); pipeline will stall",
-                    )
-                )
+            )
         stall_bs.consumed += 1
 
         return hits
@@ -1236,10 +1226,12 @@ class SyncInstructionDetector:
     def run(self, input_path: str) -> List[Violation]:
         records = collect_record_instructions(input_path)
         events = [_record_instruction_to_sync_event(record) for record in records if record.is_sync]
-        events.sort(key=lambda event: (event.cycle, event.instr_id))
+        # 同 tick 内 SET 族先于 WAIT 族（ExecInstrId 位打包不代表程序序），
+        # 否则同 tick 的 SetFlag/WaitFlag 会被误判 WAIT_NO_ARRIVE。
+        events.sort(key=lambda event: (event.cycle, _sync_op_order(event.op), event.instr_id))
         precompute_rls_count(events)  # precompute RLS_BUF counts and fill GET_BUF.rls_count
         stream = [_record_instruction_to_instr_event(record) for record in records]
-        stream.sort(key=lambda event: (event.cycle, event.instr_id))
+        stream.sort(key=lambda event: (event.cycle, _sync_op_order(event.op), event.instr_id))
         stream_by_core: Dict[str, List[InstrEvent]] = {}
         for ev in stream:
             stream_by_core.setdefault(ev.core, []).append(ev)

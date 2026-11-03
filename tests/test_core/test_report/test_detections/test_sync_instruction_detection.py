@@ -212,6 +212,45 @@ class SyncCheckRuleTests(unittest.TestCase):
         hits = self._run_db(self._rows("WAIT_FLAG", 100))
         self.assertIn("WAIT_NO_ARRIVE", self._rules(hits))
 
+    def test_same_tick_set_sorts_before_wait_regardless_of_id_order(self):
+        # ExecInstrId is bit-packed, so ordering by id within one tick does not
+        # reflect program order. The SET family must be processed before the WAIT
+        # family at the same tick, or the balanced pair misreports WAIT_NO_ARRIVE.
+        rows = self._rows("WAIT_FLAG", 100, instr_id=1) + self._rows("SET_FLAG", 100, instr_id=2)
+        hits = self._run_db(rows)
+        self.assertEqual(self._rules(hits), [])
+
+    def test_same_tick_sorted_by_sync_op_order_in_collect_events(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_record_db(
+                root,
+                [
+                    _InstrRow(
+                        9,
+                        0,
+                        2,
+                        "WAIT_FLAG",
+                        100,
+                        0,
+                        0x10,
+                        {"flag_id": 5, "target_pipe": "SCALAR", "consumer_pipe": "VEC"},
+                    ),
+                    _InstrRow(
+                        2,
+                        0,
+                        2,
+                        "SET_FLAG",
+                        100,
+                        0,
+                        0x14,
+                        {"flag_id": 5, "target_pipe": "SCALAR", "consumer_pipe": "VEC"},
+                    ),
+                ],
+            )
+            events = collect_events(str(root))
+            self.assertEqual([(e.op, e.instr_id) for e in events], [("SET_FLAG", 2), ("WAIT_FLAG", 9)])
+
     def test_wait_overconsume(self):
         rows = self._rows("SET_FLAG", 100) + self._rows("WAIT_FLAG", 110, 2) + self._rows("WAIT_FLAG", 120, 3)
         hits = self._run_db(rows)

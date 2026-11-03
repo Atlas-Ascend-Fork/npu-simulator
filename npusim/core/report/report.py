@@ -32,6 +32,11 @@ from npusim.core.public.comm import print_info, print_error, print_warn
 from npusim.core.report.detections.instr_log_parser import (
     collect_device_pcs_from_record_db,
 )
+from npusim.core.report.detections.data_race_detection import (
+    annotate_with_source as _race_annotate,
+    format_text as _race_format_text,
+    run as _race_run,
+)
 from npusim.core.report.detections.pc_source_mapper import load_source_mapper
 from npusim.core.report.detections.sync_instruction_detection import (
     annotate_with_source as _sync_annotate,
@@ -301,7 +306,16 @@ def _has_record_db(export_abs: Path) -> bool:
     return _find_cannsim_helper_db_input(export_abs) is not None
 
 
-def _run_detections(export_abs: Path, output_abs: Path, object_file: Optional[str] = None) -> bool:
+def _build_detection_mapper(export_abs: Path, output_abs: Path, object_file: Optional[str]):
+    """加载或构建各检测共用的 PC→源码映射器。"""
+    cache_path = output_abs / "pc_source_map.json"
+    cache_object = _cached_object_file(cache_path, object_file)
+    device_pcs_by_kernel = _collect_source_pcs(export_abs)
+    return _prepare_source_mapper(cache_path, cache_object, device_pcs_by_kernel)
+
+
+def _run_sync_detection(export_abs: Path, output_abs: Path, mapper) -> bool:
+    """执行同步指令检测并写出报告；缺少 helper record DB 时跳过而非失败。"""
     if not _has_record_db(export_abs):
         print_warn("sync detection skipped: no cannsim_helper record DB")
         (output_abs / "sync_instruction_detection_report.txt").write_text(
@@ -309,11 +323,6 @@ def _run_detections(export_abs: Path, output_abs: Path, object_file: Optional[st
             encoding="utf-8",
         )
         return True
-
-    cache_path = output_abs / "pc_source_map.json"
-    cache_object = _cached_object_file(cache_path, object_file)
-    device_pcs_by_kernel = _collect_source_pcs(export_abs)
-    mapper = _prepare_source_mapper(cache_path, cache_object, device_pcs_by_kernel)
 
     try:
         hits = _sync_run(str(export_abs))
@@ -323,8 +332,6 @@ def _run_detections(export_abs: Path, output_abs: Path, object_file: Optional[st
         _out = output_abs / "sync_instruction_detection_report.txt"
         _out.write_text(f"[sync_instruction_detection] detection failed: {e}\n", encoding="utf-8")
         return False
-    finally:
-        _close_source_mapper(mapper)
 
     _out = output_abs / "sync_instruction_detection_report.txt"
     try:
@@ -335,9 +342,47 @@ def _run_detections(export_abs: Path, output_abs: Path, object_file: Optional[st
         _out.write_text(f"[sync_instruction_detection] detection failed: {e}\n", encoding="utf-8")
         return False
 
+    return True
+
+
+def _run_data_race_detection(export_abs: Path, output_abs: Path, mapper) -> bool:
+    """执行数据竞争检测并写出报告。
+
+    同步检测以 helper record DB 作为门控，本检测不以此为前置条件；
+    输入缺失时只报告零命中，不作为失败。
+    """
+    _out = output_abs / "data_race_detection_report.txt"
+    try:
+        hits = _race_run(str(export_abs))
+        _race_annotate(hits, mapper)
+    except (OSError, sqlite3.Error, ValueError) as e:
+        print_error(f"data_race_detection failed: {e}")
+        _out.write_text(f"[data_race_detection] detection failed: {e}\n", encoding="utf-8")
+        return False
+
+    try:
+        _out.write_text(_race_format_text(hits), encoding="utf-8")
+        print_info(f"data_race_detection: {len(hits)} violation(s) -> {_out}")
+    except OSError as e:
+        print_error(f"data_race_detection failed: {e}")
+        _out.write_text(f"[data_race_detection] detection failed: {e}\n", encoding="utf-8")
+        return False
+
+    return True
+
+
+def _run_detections(export_abs: Path, output_abs: Path, object_file: Optional[str] = None) -> bool:
+    """运行全部检测并写出各自报告，各检测共用同一个 PC→源码映射器。"""
+    mapper = _build_detection_mapper(export_abs, output_abs, object_file)
+    try:
+        sync_ok = _run_sync_detection(export_abs, output_abs, mapper)
+        race_ok = _run_data_race_detection(export_abs, output_abs, mapper)
+    finally:
+        _close_source_mapper(mapper)
+
     # 检测命中是报告结果，不是 report 工具本身的执行失败；只有
     # 检测流程异常时才让 generate_report 返回 False。
-    return True
+    return sync_ok and race_ok
 
 
 def generate_report(

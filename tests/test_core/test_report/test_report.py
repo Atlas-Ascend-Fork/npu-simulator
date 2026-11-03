@@ -66,7 +66,7 @@ FallbackChain = strategy_impl_mod.FallbackChain
 
 
 class ReportTests(unittest.TestCase):
-    def test_report_rejects_non_v7_contract(self):
+    def test_report_rejects_wrong_contract(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             export_dir = root / "export"
@@ -207,7 +207,7 @@ class ReportTests(unittest.TestCase):
             self.assertNotIn("--input-db", chain.biprof_args)
 
     def test_detection_without_record_db_is_skipped_not_failed(self):
-        """instr.bin-only report 仍应成功，且同步检测输出明确跳过报告。"""
+        """An instr.bin-only report still succeeds; sync detection reports the skip."""
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             export_dir = root / "export"
@@ -226,6 +226,48 @@ class ReportTests(unittest.TestCase):
             self.assertTrue(ok)
             report_file = output_dir / "sync_instruction_detection_report.txt"
             self.assertIn("Skipped: no cannsim_helper record DB", report_file.read_text(encoding="utf-8"))
+
+    def test_data_race_detection_is_reachable_and_writes_report(self):
+        """report.py must expose a data-race entry; it reads the helper record DB."""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            export_dir = root / "export"
+            output_dir = root / "report"
+            db_path = _write_helper_db(export_dir)
+            with sqlite3.connect(db_path) as con:
+                con.execute(
+                    "CREATE TABLE ExecutedInstructions("
+                    "ExecInstrId INTEGER PRIMARY KEY, ExecInstrCoreId INTEGER, CoreTypeId INTEGER, "
+                    "ExecInstrName TEXT, ExecInstrTickStart INTEGER, InstrTypeId INTEGER, "
+                    "SourceInstrAddr INTEGER, ExtendParams TEXT)"
+                )
+                con.execute(
+                    "CREATE TABLE MemoryRWAccesses("
+                    "AccessedAddress INTEGER NOT NULL, AccessMode VARCHAR(1) NOT NULL, "
+                    "AccessTime INTEGER NOT NULL, MemoryType INTEGER NOT NULL, ExecInstrId INTEGER, "
+                    "CoreId INTEGER NOT NULL, Size INTEGER, Step INTEGER)"
+                )
+                # Two same-core writes to an overlapping GM address -> GM_WAW_OVERLAP
+                con.executemany(
+                    "INSERT INTO MemoryRWAccesses VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (0x1000, "W", 1, 0, 1, 0, 512, 1),
+                        (0x1000, "W", 2, 0, 2, 0, 512, 2),
+                    ],
+                )
+
+            with patch.object(report_mod, "_REPORT_CHAIN", _BiProfSuccessChain()):
+                ok = report_mod.generate_report(
+                    export=str(export_dir),
+                    output=str(output_dir),
+                    core_id="0",
+                )
+
+            # Violations are report results, not tool failures.
+            self.assertTrue(ok)
+            race_report = output_dir / "data_race_detection_report.txt"
+            self.assertIn("GM_WAW_OVERLAP", race_report.read_text(encoding="utf-8"))
+            self.assertTrue((output_dir / "sync_instruction_detection_report.txt").exists())
 
 
 def _write_chip_helper_db(db_path, chip_id=0):
@@ -329,9 +371,9 @@ class MultiChipReportDbTests(unittest.TestCase):
                 self.assertIn("--input-db", args)
 
     def test_backend_failure_surfaces_biprof_log_root_cause(self):
-        # 真实根因 ("Failed to find instruction logs") 写在
-        # {output_abs}/results/runner.py.log 里, 面向用户报错应优先呈现它,
-        # 而不是误导性的「Please install Python report dependencies」。
+        # The real root cause ("Failed to find instruction logs") is written to
+        # {output_abs}/results/runner.py.log and must be surfaced first, instead of
+        # the misleading "Please install Python report dependencies" hint.
         err = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -358,11 +400,11 @@ class MultiChipReportDbTests(unittest.TestCase):
         self.assertIn("Root cause:", text)
         self.assertIn("Failed to find instruction logs", text)
         self.assertIn("runner.py.log", text)
-        # 根因已定位时, 不应再抛误导性的「依赖缺失」兜底文案
+        # Once the root cause is located, do not fall back to the misleading hint.
         self.assertNotIn("Please install Python report dependencies", text)
 
     def test_backend_failure_empty_instr_bin_root_cause(self):
-        # 另一种根因: instr.bin 为空 -> "Binary calog file is empty"。
+        # Another root cause: an empty instr.bin -> "Binary calog file is empty".
         err = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -385,7 +427,8 @@ class MultiChipReportDbTests(unittest.TestCase):
         self.assertNotIn("Please install Python report dependencies", text)
 
     def test_backend_failure_falls_back_to_install_hint_without_log(self):
-        # 无后端日志时退回到安装提示，并指向 prof_demo。
+        # Without biprof logs (module not loaded / no backend attempted), fall back
+        # to the generic hint, which still points to prof_demo.
         err = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

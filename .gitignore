@@ -21,3 +21,6 @@ htmlcov/
 oat_reports/
 .vscode
 NUL
+
+# codegraph index cache
+.codegraph/
