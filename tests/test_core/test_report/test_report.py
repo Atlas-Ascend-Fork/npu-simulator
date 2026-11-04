@@ -177,16 +177,18 @@ class ReportTests(unittest.TestCase):
             chain = _CaptureArgsChain()
 
             with patch.object(report_mod, "_REPORT_CHAIN", chain):
-                report_mod.report(
+                ok = report_mod.report(
                     export=str(export_dir),
                     output=str(output_dir),
                     core_id="0",
                 )
-            for args in chain.calls:
-                self.assertIn("--binary-log", args)
-                self.assertNotIn("--input-db", args)
+            # instr.bin-only（无配对 chip*.db）输入已被后端移除：
+            # 明确失败，不再构造后端不接受的 --binary-log 参数。
+            self.assertFalse(ok)
+            self.assertEqual(len(chain.calls), 0)
 
-    def test_generate_report_falls_back_to_instr_bin(self):
+    def test_generate_report_rejects_instr_bin_only(self):
+        err = io.StringIO()
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             export_dir = root / "export"
@@ -195,19 +197,21 @@ class ReportTests(unittest.TestCase):
             (export_dir / "instr.bin").write_bytes(b"bin")
             chain = _CaptureArgsChain()
 
-            with patch.object(report_mod, "_REPORT_CHAIN", chain):
-                ok = report_mod.generate_report(
-                    export=str(export_dir),
-                    output=str(output_dir),
-                    core_id="0",
-                )
+            with redirect_stderr(err):
+                with patch.object(report_mod, "_REPORT_CHAIN", chain):
+                    ok = report_mod.generate_report(
+                        export=str(export_dir),
+                        output=str(output_dir),
+                        core_id="0",
+                    )
 
             self.assertFalse(ok)
-            self.assertIn("--binary-log", chain.biprof_args)
-            self.assertNotIn("--input-db", chain.biprof_args)
+            self.assertEqual(len(chain.calls), 0)
+            # 用户可见文案：明确告知旧输入不再被支持而非静默失败
+            self.assertIn("no longer supported", err.getvalue())
 
     def test_detection_without_record_db_is_skipped_not_failed(self):
-        """An instr.bin-only report still succeeds; sync detection reports the skip."""
+        """instr.bin-only 输入被拒：报告整体失败，且不再走到同步检测。"""
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             export_dir = root / "export"
@@ -223,51 +227,9 @@ class ReportTests(unittest.TestCase):
                     core_id="0",
                 )
 
-            self.assertTrue(ok)
+            self.assertFalse(ok)
             report_file = output_dir / "sync_instruction_detection_report.txt"
-            self.assertIn("Skipped: no cannsim_helper record DB", report_file.read_text(encoding="utf-8"))
-
-    def test_data_race_detection_is_reachable_and_writes_report(self):
-        """report.py must expose a data-race entry; it reads the helper record DB."""
-        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
-            root = Path(tmp)
-            export_dir = root / "export"
-            output_dir = root / "report"
-            db_path = _write_helper_db(export_dir)
-            with sqlite3.connect(db_path) as con:
-                con.execute(
-                    "CREATE TABLE ExecutedInstructions("
-                    "ExecInstrId INTEGER PRIMARY KEY, ExecInstrCoreId INTEGER, CoreTypeId INTEGER, "
-                    "ExecInstrName TEXT, ExecInstrTickStart INTEGER, InstrTypeId INTEGER, "
-                    "SourceInstrAddr INTEGER, ExtendParams TEXT)"
-                )
-                con.execute(
-                    "CREATE TABLE MemoryRWAccesses("
-                    "AccessedAddress INTEGER NOT NULL, AccessMode VARCHAR(1) NOT NULL, "
-                    "AccessTime INTEGER NOT NULL, MemoryType INTEGER NOT NULL, ExecInstrId INTEGER, "
-                    "CoreId INTEGER NOT NULL, Size INTEGER, Step INTEGER)"
-                )
-                # Two same-core writes to an overlapping GM address -> GM_WAW_OVERLAP
-                con.executemany(
-                    "INSERT INTO MemoryRWAccesses VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        (0x1000, "W", 1, 0, 1, 0, 512, 1),
-                        (0x1000, "W", 2, 0, 2, 0, 512, 2),
-                    ],
-                )
-
-            with patch.object(report_mod, "_REPORT_CHAIN", _BiProfSuccessChain()):
-                ok = report_mod.generate_report(
-                    export=str(export_dir),
-                    output=str(output_dir),
-                    core_id="0",
-                )
-
-            # Violations are report results, not tool failures.
-            self.assertTrue(ok)
-            race_report = output_dir / "data_race_detection_report.txt"
-            self.assertIn("GM_WAW_OVERLAP", race_report.read_text(encoding="utf-8"))
-            self.assertTrue((output_dir / "sync_instruction_detection_report.txt").exists())
+            self.assertFalse(report_file.exists())
 
 
 def _write_chip_helper_db(db_path, chip_id=0):
@@ -320,7 +282,7 @@ class MultiChipReportDbTests(unittest.TestCase):
             for args in chain.calls:
                 self.assertIn("--input-db", args)
 
-    def test_multi_chip_without_dbs_falls_back_to_instr_bin(self):
+    def test_multi_chip_without_dbs_is_rejected(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             export_dir = root / "export"
@@ -332,16 +294,15 @@ class MultiChipReportDbTests(unittest.TestCase):
 
             chain = _CaptureArgsChain()
             with patch.object(report_mod, "_REPORT_CHAIN", chain):
-                report_mod.report(
+                ok = report_mod.report(
                     export=str(export_dir),
                     output=str(output_dir),
                     core_id="all",
                 )
 
-            self.assertEqual(len(chain.calls), 2)
-            for args in chain.calls:
-                self.assertIn("--binary-log", args)
-                self.assertNotIn("--input-db", args)
+            # 无配对 DB 的旧 instr.bin 多卡产物：明确失败，不再构造非法参数。
+            self.assertFalse(ok)
+            self.assertEqual(len(chain.calls), 0)
 
     def test_multi_chip_db_in_record_subdir(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
@@ -369,6 +330,112 @@ class MultiChipReportDbTests(unittest.TestCase):
             self.assertEqual(len(chain.calls), 2)
             for args in chain.calls:
                 self.assertIn("--input-db", args)
+
+
+class MultiChipDbDirReportTests(unittest.TestCase):
+    """report() with record/chip{N}/*.db dirs (helper >= 0.8 layout)."""
+
+    @staticmethod
+    def _make_chip_db_dirs(record_dir: Path, chips):
+        for chip in chips:
+            _write_chip_helper_db(record_dir / f"chip{chip}" / f"000{chip}_kernel.db")
+
+    def test_report_dispatches_chip_db_dirs_to_multi_chip(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            export_dir = root / "export"
+            output_dir = root / "report"
+            record_dir = export_dir / "record"
+            record_dir.mkdir(parents=True)
+            self._make_chip_db_dirs(record_dir, (0, 1))
+
+            chain = _CaptureArgsChain()
+            with patch.object(report_mod, "_REPORT_CHAIN", chain):
+                ok = report_mod.report(
+                    export=str(export_dir),
+                    output=str(output_dir),
+                    core_id="all",
+                )
+
+            self.assertFalse(ok)  # chain mock returns False; routing itself succeeded
+            self.assertEqual(len(chain.calls), 2)
+            input_dbs = []
+            for args in chain.calls:
+                self.assertIn("--input-db", args)
+                idx = args.index("--input-db")
+                input_dbs.append(Path(args[idx + 1]))
+            self.assertTrue(all(d.is_dir() for d in input_dbs))
+            self.assertEqual([d.name for d in input_dbs], ["chip0", "chip1"])
+            self.assertTrue((output_dir / "chip0_result").is_dir())
+            self.assertTrue((output_dir / "chip1_result").is_dir())
+
+    def test_report_accepts_record_dir_passed_directly(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            record_dir = root / "run" / "record"
+            record_dir.mkdir(parents=True)
+            self._make_chip_db_dirs(record_dir, (0, 1))
+
+            chain = _CaptureArgsChain()
+            with patch.object(report_mod, "_REPORT_CHAIN", chain):
+                report_mod.report(
+                    export=str(record_dir),
+                    output=str(root / "report"),
+                    core_id="all",
+                )
+
+            self.assertEqual(len(chain.calls), 2)
+            for args in chain.calls:
+                self.assertIn("--input-db", args)
+
+    def test_single_chip_dir_routes_to_chip_flow(self):
+        """ktest 1p（同样设 PER_CHIP_DB）产出单 chip 目录，走同一 chip 路由。"""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            record_dir = root / "run" / "record"
+            record_dir.mkdir(parents=True)
+            self._make_chip_db_dirs(record_dir, (0,))
+
+            chain = _CaptureArgsChain()
+            with patch.object(report_mod, "_REPORT_CHAIN", chain):
+                report_mod.report(
+                    export=str(root / "run"),
+                    output=str(root / "report"),
+                    core_id="all",
+                )
+
+            self.assertEqual(len(chain.calls), 1)
+            args = chain.calls[0]
+            self.assertIn("--input-db", args)
+            self.assertTrue((root / "report" / "chip0_result").is_dir())
+
+    def test_flat_chip_dbs_stay_single_card(self):
+        """helper 0.7.x 平铺 chip{N}.db 是文件不是目录：仍走单卡 DB 路径。"""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            export_dir = root / "export"
+            record_dir = export_dir / "record"
+            record_dir.mkdir(parents=True)
+            _write_chip_helper_db(record_dir / "chip0.db", chip_id=0)
+            _write_chip_helper_db(record_dir / "chip1.db", chip_id=1)
+
+            chain = _CaptureArgsChain()
+            with patch.object(report_mod, "_REPORT_CHAIN", chain):
+                report_mod.report(
+                    export=str(export_dir),
+                    output=str(root / "report"),
+                    core_id="0",
+                )
+
+            self.assertEqual(len(chain.calls), 1)
+            args = chain.calls[0]
+            self.assertIn("--input-db", args)
+            idx = args.index("--input-db")
+            self.assertEqual(Path(args[idx + 1]), record_dir.resolve())
+
+
+class BackendFailureMessageTests(unittest.TestCase):
+    """FallbackChain 面向用户的失败文案（与输入布局无关）。"""
 
     def test_backend_failure_surfaces_biprof_log_root_cause(self):
         # The real root cause ("Failed to find instruction logs") is written to

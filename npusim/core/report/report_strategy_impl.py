@@ -58,7 +58,9 @@ class BiProfModuleStrategy(ReportStrategy):
         print_info("Running ProfRunner module...")
         try:
             retcode = _runner.run(biprof_args)
-        except Exception as e:
+        # argparse 校验失败抛 SystemExit（BaseException），一并捕获后
+        # 降级到下一后端，避免直接杀死整个 npusim 进程。
+        except (Exception, SystemExit) as e:
             print_warn(f"Failed to run ProfRunner module: {e}")
             return (self.name, False)
 
@@ -94,7 +96,8 @@ class ProfDemoStrategy(ReportStrategy):
         print_info("Running prof_demo...")
         try:
             retcode = run_prof_demo(biprof_args)
-        except Exception as e:
+        # 与 BiProfModuleStrategy 同理：内部 CLI 校验失败可能抛 SystemExit。
+        except (Exception, SystemExit) as e:
             print_warn(f"Failed to run prof_demo: {e}")
             return (self.name, False)
 

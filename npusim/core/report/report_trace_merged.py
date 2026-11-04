@@ -33,6 +33,11 @@ TRACE_FILE_RE = re.compile(r"^trace_core\d+\.json(\.gz)?$")
 _CHIP_INDEX_RE = re.compile(r"^chip(\d+)_result$")
 _KERNEL_INDEX_RE = re.compile(r"^kernel_(\d+)_reports$")
 
+# Contract-DB stem naming: <launch_id>_<kernel_name>_reports (e.g.
+# 0003_entry_kernel_20_reports). The leading launch id keeps kernel
+# indices unique within a chip.
+_LAUNCH_ID_REPORTS_RE = re.compile(r"^(\d+).*_reports$")
+
 # Match any *_reports directory (broader than _KERNEL_INDEX_RE, which only
 # matches kernel_<N>_reports).
 _KERNEL_REPORTS_RE = re.compile(r"^.*_reports$")
@@ -71,8 +76,13 @@ def _build_trace_output(merged_events, display_time_unit):
 
 
 def strip_slot(name):
-    """Remove a trailing _SLOTnn suffix from a thread/task name."""
-    if not name:
+    """Remove a trailing _SLOTnn suffix from a thread/task name.
+
+    BiProfRunner traces carry numeric ``tid`` values (int), where the
+    suffix concept does not apply; non-string inputs are returned
+    unchanged so the merge keeps the original format.
+    """
+    if not name or not isinstance(name, str):
         return name
     return SLOT_SUFFIX_RE.sub("", name)
 
@@ -182,7 +192,10 @@ def _remap_core_events(core_events, core_idx, make_pid_func, family_map, pid_sor
                     "pid": new_pid,
                     "tid": "NA",
                     "ph": "M",
-                    "args": {"sort_index": pid_sort_index[new_pid]},
+                    # 完整 family 列表在构建 pid_sort_index 时已知；事件里出现
+                    # 未映射 pid（无 process_name 元数据）回退 UNKNOWN 时，惰性
+                    # 分配下一个连续索引，而不是 KeyError 崩溃。
+                    "args": {"sort_index": pid_sort_index.setdefault(new_pid, len(pid_sort_index) + 1)},
                 }
             )
             merged_events.append(
@@ -340,11 +353,18 @@ def _extract_chip_index(chip_dir):
 
 
 def _extract_kernel_index(kernel_dir):
-    """Extract the numeric kernel index from a ``kernel_<N>_reports`` name.
+    """Extract the numeric kernel index from a ``*_reports`` directory name.
 
-    Falls back to 0 when the name does not match (defensive).
+    Handles both the legacy ``kernel_<N>_reports`` naming and the
+    contract-DB stem naming (``<launch_id>_<kernel>_reports``, e.g.
+    ``0003_entry_kernel_20_reports``); the latter is keyed by the leading
+    launch id so per-kernel merged outputs and merge_all cache keys stay
+    unique. Falls back to 0 when the name carries no usable digits.
     """
     m = _KERNEL_INDEX_RE.match(kernel_dir)
+    if m:
+        return int(m.group(1))
+    m = _LAUNCH_ID_REPORTS_RE.match(kernel_dir)
     if m:
         return int(m.group(1))
     return 0

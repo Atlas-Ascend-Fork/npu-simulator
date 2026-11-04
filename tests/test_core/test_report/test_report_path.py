@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from npusim.core.report.report_path import _reorganize_reports_by_core
+from npusim.core.report.report_path import _find_chip_db_dirs, _reorganize_reports_by_core
 
 report_mod = importlib.import_module("npusim.core.report.report")
 version_mod = importlib.import_module("npusim.version")
@@ -122,6 +122,68 @@ class ReportPathTests(unittest.TestCase):
             # The real per-core file next to it is still moved.
             self.assertFalse(pending.exists())
             self.assertTrue((kernel_dir / "core_2" / "core_2_icache_report.html").exists())
+
+
+class FindChipDbDirsTests(unittest.TestCase):
+    """Multi-chip per-chip DB dir detection (helper >= 0.8 layout)."""
+
+    @staticmethod
+    def _make_layout(root: Path):
+        record_dir = root / "run" / "record"
+        for chip in (0, 1):
+            chip_dir = record_dir / f"chip{chip}"
+            chip_dir.mkdir(parents=True)
+            (chip_dir / "0000_kernel.db").write_bytes(b"")
+        return record_dir
+
+    def test_finds_chip_dirs_under_run_dir_and_record_dir(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            self._make_layout(root)
+
+            from_run = _find_chip_db_dirs(root / "run")
+            from_record = _find_chip_db_dirs(root / "run" / "record")
+
+            self.assertEqual([p.name for p in from_run], ["chip0", "chip1"])
+            self.assertEqual([p.name for p in from_record], ["chip0", "chip1"])
+            self.assertEqual(from_run, from_record)
+
+    def test_numeric_ordering(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            for chip in (10, 2):
+                chip_dir = root / f"chip{chip}"
+                chip_dir.mkdir()
+                (chip_dir / "k.db").write_bytes(b"")
+            self.assertEqual([p.name for p in _find_chip_db_dirs(root)], ["chip2", "chip10"])
+
+    def test_ignores_flat_files_empty_dirs_and_non_chip_names(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            # helper 0.7.x 平铺 chip*.db 文件：不匹配（文件非目录）
+            (root / "chip0.db").write_bytes(b"")
+            (root / "chip0_instr.bin").write_bytes(b"")
+            # 无 .db 的 chip 目录不匹配
+            (root / "chip1").mkdir()
+            # 非法 chip 命名不匹配
+            results = root / "results"
+            results.mkdir()
+            (results / "x.db").write_bytes(b"")
+            backups = root / "chip_backup"
+            backups.mkdir()
+            (backups / "x.db").write_bytes(b"")
+            # 合法 chip 目录
+            chip2 = root / "chip2"
+            chip2.mkdir()
+            (chip2 / "x.db").write_bytes(b"")
+
+            found = _find_chip_db_dirs(root)
+
+            self.assertEqual([p.name for p in found], ["chip2"])
+
+    def test_empty_export(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            self.assertEqual(_find_chip_db_dirs(Path(tmp) / "nonexistent"), [])
 
 
 if __name__ == "__main__":

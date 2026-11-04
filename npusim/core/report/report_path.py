@@ -31,6 +31,9 @@ from npusim.core.report.report_strategy_base import SOC_TO_ARCH as _SOC_TO_ARCH
 
 _MAX_CORES = _DEFAULT_MAX_CORES
 
+# 多卡 per-chip DB 目录名：chip{N}（helper >= 0.8 布局）。
+_CHIP_DB_DIR_RE = re.compile(r"^chip(\d+)$")
+
 
 def _resolve_paths(export: str, output: str):
     """解析并校验导出/输出路径，返回 (export_abs, output_abs)，失败时两个元素均为 None。"""
@@ -78,6 +81,31 @@ def _find_log_ca(export_abs: Path) -> Optional[Path]:
     return None
 
 
+def _find_chip_db_dirs(export_abs: Path) -> List[Path]:
+    """查找多卡 per-chip DB 目录（``chip{N}/`` 且内含 ``*.db``）。
+
+    cannsim_helper >= 0.8 per-chip 模式（record ``--chip`` 与 ktest 均设
+    ``CANNSIM_HELPER_PER_CHIP_DB=1``）把 ``record/chip{N}/{kernel}.db``
+    写在 LAUNCH_DB_DIR 的 chip 子目录下。分别在 export 本身与
+    ``export/record`` 查找，与 :func:`report._find_chip_instr_bins`
+    双布局一致。helper 0.7.x 的平铺 ``chip{N}.db`` 是文件不是目录，
+    不会误匹配，仍走单卡 DB 路径。
+
+    Returns:
+        List[Path]: 按 chip 编号升序排列的 chip 目录列表。
+    """
+    matches = []
+    for base in (export_abs, export_abs / "record"):
+        if not base.is_dir():
+            continue
+        for entry in base.iterdir():
+            m = _CHIP_DB_DIR_RE.match(entry.name)
+            if m and entry.is_dir() and any(entry.glob("*.db")):
+                matches.append((int(m.group(1)), entry))
+    matches.sort(key=lambda item: item[0])
+    return [entry for _, entry in matches]
+
+
 def _find_cannsim_helper_db_input(export_abs: Path) -> Optional[Path]:
     """
     查找 cannsim_helper 生成的唯一受支持 SQLite DB 输入。
@@ -118,8 +146,6 @@ def find_cannsim_helper_db_files(export_abs: Path) -> List[Path]:
 def _build_biprof_args(
     output_abs: Path,
     input_db_path: Optional[Path] = None,
-    instr_bin_path: Optional[Path] = None,
-    log_ca_path: Optional[Path] = None,
     soc_version: Optional[str] = None,
     core_id: Optional[str] = None,
     vf_report_json: bool = False,
@@ -128,10 +154,13 @@ def _build_biprof_args(
 ) -> List[str]:
     """构建 BiProfRunner report 子命令的完整参数列表。
 
-    输入源优先级：helper DB（``--input-db``）> instr.bin（``--binary-log``）
-    > log_ca（``--camodel-log``）。两种解析方式并存：后续走 helper 数据合同，
-    当前多卡场景仍使用 instr.bin。
+    输入源仅支持 helper DB（``--input-db``）。instr.bin（``--binary-log``）
+    与 log_ca（``--camodel-log``）输入已被两个 report 后端移除：BiProfRunner
+    CLI 仅接受 ``--input-db``，prof_demo 适配器同样明确拒绝旧输入。
     """
+    if input_db_path is None:
+        raise ValueError("report input is required: a cannsim_helper contract DB")
+
     arch = _SOC_TO_ARCH.get(soc_version, "v100") if soc_version else "v100"
     args = [
         "report",
@@ -139,16 +168,9 @@ def _build_biprof_args(
         arch,
         "-o",
         str(output_abs),
+        "--input-db",
+        str(input_db_path),
     ]
-
-    if input_db_path is not None:
-        args.extend(["--input-db", str(input_db_path)])
-    elif instr_bin_path is not None:
-        args.extend(["--binary-log", str(instr_bin_path.parent)])
-    elif log_ca_path is not None:
-        args.extend(["--camodel-log", str(log_ca_path)])
-    else:
-        raise ValueError("report input is required: helper DB, instr.bin, or log_ca")
 
     if not multi_chip:
         args.extend(

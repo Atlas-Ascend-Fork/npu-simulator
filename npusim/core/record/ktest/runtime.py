@@ -231,7 +231,8 @@ def build_execution_env(
     - 注入 ``CAMODEL_SIM_TYPE`` 指定仿真模型类型（CA / PV）。
     - 注入 cannsim_helper：ktest 的 ``./sim`` 不经过 ``rtKernelLaunch``，
       launch-split 不会开库，因此必须设 ``CANNSIM_HELPER_PER_CHIP_DB=1``
-      让 helper 按 per-chip 路由惰性建 ``chip{N}.db``。
+      让 helper 按 per-chip 路由惰性建库（helper >= 0.8 为
+      ``chip{N}/{kernel}.db`` 子目录，0.7.x 为平铺 ``chip{N}.db``）。
     - 不设 ``CAMODEL_LOG_PATH`` / ``STARS_LOG_PATH``：log_ca 落在 camodel_path 下，
       跑完后随其它产物一起搬到 target_dir。
     - 不设 ``CORE_ENABLE_MASK`` / ``TASK_QUEUE_ENABLE``。

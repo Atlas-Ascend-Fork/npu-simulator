@@ -36,12 +36,26 @@ from npusim.core.report.report_trace_merged import (
     discover_chip_tasks,
     merge_all,
     merge_chip,
+    strip_slot,
     _extract_chip_index,
     _extract_kernel_index,
 )
 
 report_mod = importlib.import_module("npusim.core.report.report")
 main_mod = importlib.import_module("npusim.main")
+version_mod = importlib.import_module("npusim.version")
+
+
+def _write_helper_db(db_path):
+    """Write a minimal valid cannsim_helper contract DB (report input)."""
+    import sqlite3
+
+    db_path = Path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE KernelInfo(KernelInfoAttr VARCHAR(60) NOT NULL, KernelInfoVal VARCHAR(60) NOT NULL)")
+        conn.execute("INSERT INTO KernelInfo VALUES ('helper_version', ?)", (version_mod.VERSION,))
+        conn.execute("INSERT INTO KernelInfo VALUES ('contract_version', '7')")
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +345,106 @@ class DiscoverChipTasksTests(unittest.TestCase):
         self.assertEqual(_extract_kernel_index("kernel_7_reports"), 7)
         self.assertEqual(_extract_kernel_index("foo_reports"), 0)
 
+    def test_extract_kernel_index_db_stem_uses_launch_id(self):
+        # 契约 DB stem 命名 <launch_id>_<kernel>_reports：用前导 launch id
+        # 作索引，保证同一 chip 内不同 kernel 的缓存键与产物名不冲突。
+        self.assertEqual(_extract_kernel_index("0000_entry_kernel_400_reports"), 0)
+        self.assertEqual(_extract_kernel_index("0003_entry_kernel_20_reports"), 3)
+        self.assertEqual(_extract_kernel_index("12_foo_reports"), 12)
+
+    def test_strip_slot_keeps_non_string_values(self):
+        # BiProfRunner 真实 trace 的 tid 为 int：不做 _SLOT 剥离，原样保留。
+        self.assertEqual(strip_slot(12), 12)
+        self.assertEqual(strip_slot(0), 0)
+        self.assertEqual(strip_slot(None), None)
+        self.assertEqual(strip_slot("SCALAR_LDST_SLOT00"), "SCALAR_LDST")
+
+
+# ---------------------------------------------------------------------------
+# Realistic BiProfRunner trace format (int tid / int flow id, DB-stem
+# kernel dir names, pids without process_name metadata)
+# ---------------------------------------------------------------------------
+
+
+def _make_realistic_core_trace():
+    """Events shaped like real BiProfRunner trace_coreN.json output."""
+    return {
+        "displayTimeUnit": "ns",
+        "traceEvents": [
+            {"ph": "M", "name": "process_name", "pid": 0, "tid": 0, "args": {"name": "AIC_MAIN"}},
+            {"ph": "M", "name": "thread_name", "pid": 0, "tid": 2, "args": {"name": "SCALAR_LDST_SLOT00"}},
+            {
+                "ph": "X",
+                "name": "instr",
+                "pid": 0,
+                "tid": 2,
+                "ts": 1,
+                "dur": 5,
+                "args": {"task_id": "SCALAR_LDST_SLOT00"},
+            },
+            {"ph": "s", "name": "flow", "pid": 0, "tid": 2, "id": 7},
+            {"ph": "f", "name": "flow", "pid": 0, "tid": 3, "id": 7},
+            # pid 9 has no process_name metadata -> must fall back to
+            # UNKNOWN family without crashing on the sort index lookup.
+            {"ph": "X", "name": "other", "pid": 9, "tid": 4, "ts": 2, "dur": 3, "args": {"task_id": "MTE1_SLOT01"}},
+        ],
+    }
+
+
+class MergeRealisticTraceTests(unittest.TestCase):
+    """Regression: -m merge on real traces (int tid crashed re.sub before)."""
+
+    KERNEL_DIRS = ("0000_entry_kernel_400_reports", "0003_entry_kernel_20_reports")
+
+    @staticmethod
+    def _seed(root: Path):
+        for kernel in MergeRealisticTraceTests.KERNEL_DIRS:
+            core_dir = root / "chip0_result" / "results" / kernel / "core_0"
+            core_dir.mkdir(parents=True)
+            (core_dir / "trace_core0.json").write_text(json.dumps(_make_realistic_core_trace()))
+        return root / "chip0_result"
+
+    def test_merge_chip_keeps_int_tid_and_handles_unknown_family(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            chip_dir = self._seed(Path(tmp))
+            out = Path(tmp) / "merged.json"
+            stats = merge_chip(str(chip_dir), self.KERNEL_DIRS[0], str(out))
+
+            self.assertEqual(stats["num_cores"], 1)
+            events = json.loads(out.read_text())["traceEvents"]
+            instr = [e for e in events if e.get("name") == "instr"][0]
+            # int tid 原样保留（仅字符串做 _SLOT 剥离）
+            self.assertEqual(instr["tid"], 2)
+            # 字符串 task_id 剥离 _SLOT 后缀
+            self.assertEqual(instr["args"]["task_id"], "SCALAR_LDST")
+            # pid 重映射为合并格式
+            self.assertEqual(instr["pid"], "CORE0.AIC")
+            # flow id 重编码为 "<new_pid>_<id>" 字符串
+            flows = [e for e in events if e.get("ph") in ("s", "f")]
+            self.assertTrue(all(isinstance(e["id"], str) for e in flows))
+            # 无 process_name 元数据的 pid 回退 UNKNOWN，且拥有合法 sort index
+            unknown_meta = [
+                e for e in events if e.get("pid") == "CORE0.UNKNOWN" and e.get("name") == "process_sort_index"
+            ]
+            self.assertEqual(len(unknown_meta), 1)
+            self.assertIsInstance(unknown_meta[0]["args"]["sort_index"], int)
+
+    def test_merge_all_distinct_kernel_outputs_no_collision(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            self._seed(root)
+            report_mod._merge_core_traces(root)
+
+            # launch id 作 kernel 索引：两个 kernel 产物不互相覆盖
+            self.assertTrue((root / "chip0_result" / "trace_chip0_kernel0.json").exists())
+            self.assertTrue((root / "chip0_result" / "trace_chip0_kernel3.json").exists())
+            self.assertTrue((root / "trace_allchips.json").exists())
+            events = json.loads((root / "trace_allchips.json").read_text())["traceEvents"]
+            pids = {e["pid"] for e in events if isinstance(e.get("pid"), str)}
+            self.assertIn("CHIP0.KERNEL0.CORE0.AIC", pids)
+            self.assertIn("CHIP0.KERNEL3.CORE0.AIC", pids)
+            self.assertIn("CHIP0.KERNEL0.CORE0.UNKNOWN", pids)
+
 
 # ---------------------------------------------------------------------------
 # _merge_core_traces (orchestration)
@@ -386,7 +500,7 @@ class MergeTraceTriggerTests(unittest.TestCase):
         export_dir = Path(tmp) / "export"
         output_dir = Path(tmp) / "report"
         (export_dir).mkdir()
-        (export_dir / "instr.bin").write_bytes(b"")
+        _write_helper_db(export_dir / "record" / "0000_kernel.db")
         core_dir = output_dir / "results" / "kernel_0_reports" / "core_0"
         core_dir.mkdir(parents=True)
         (core_dir / "trace_core0.json").write_text(json.dumps(_make_core_trace(["AIC"])), encoding="utf-8")
@@ -440,6 +554,9 @@ class MergeTraceTriggerTests(unittest.TestCase):
             export_dir.mkdir()
             (export_dir / "chip0_instr.bin").write_bytes(b"")
             (export_dir / "chip1_instr.bin").write_bytes(b"")
+            # 旧多卡 instr.bin 路径需要配对的 chip{N}.db 契约 DB
+            _write_helper_db(export_dir / "chip0.db")
+            _write_helper_db(export_dir / "chip1.db")
             # pre-place traces in the post-BiProfRunner layout
             for chip in (0, 1):
                 cd = output_dir / f"chip{chip}_result" / "results" / "kernel_0_reports" / "core_0"
@@ -466,6 +583,8 @@ class MergeTraceTriggerTests(unittest.TestCase):
             export_dir.mkdir()
             (export_dir / "chip0_instr.bin").write_bytes(b"")
             (export_dir / "chip1_instr.bin").write_bytes(b"")
+            _write_helper_db(export_dir / "chip0.db")
+            _write_helper_db(export_dir / "chip1.db")
             with patch.object(report_mod, "_REPORT_CHAIN", _BiProfSuccessChain()):
                 ok = report_mod.report(
                     export=str(export_dir),

@@ -48,11 +48,12 @@ TARGET="${1:-3.7}"
 WORKSPACE="${WORKSPACE:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "${WORKSPACE}"
 
-# Scan the whole repo root so setup.py, tests/, and any future top-level
-# package are covered — not just cannsim/. Vendored/generated/venv trees are
-# excluded both in Layer 1/3 (EXCLUDE_PARTS) and Layer 2 (vermin regex), see
-# below. Both layers must agree on the same exclusion set.
-SCAN_DIRS="."
+# Scan scope: the shipped package (npusim/), its tests (tests/), tools/, and
+# setup.py — the Python that ships or gates the release. Docs and CI scripts
+# are out of scope. Vendored/generated/venv trees are excluded both in
+# Layer 1/3 (EXCLUDE_PARTS) and in Layer 2 (vermin regex), see below. Both
+# layers must agree on the same exclusion set.
+SCAN_DIRS="npusim tests tools setup.py"
 # Path components whose presence in a file's relative path means "skip".
 # Shared conceptually with the vermin --exclude-regex list below; keep them
 # in sync when editing.
@@ -124,7 +125,7 @@ def _iter_annotations(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             args = node.args
             params = (
-                list(args.posonlyargs)
+                list(getattr(args, "posonlyargs", []))
                 + list(args.args)
                 + list(args.kwonlyargs)
             )
@@ -144,18 +145,31 @@ def _iter_annotations(tree):
 
 files = []
 for d in scan_dirs:
-    files.extend(
-        f for f in sorted(pathlib.Path(d).rglob("*.py"))
-        if not _excluded(f)
-    )
+    p = pathlib.Path(d)
+    if p.is_file():
+        # scan dirs may list single files (e.g. setup.py); rglob only
+        # walks directories and silently yields nothing for a file.
+        if p.suffix == ".py" and not _excluded(p):
+            files.append(p)
+    else:
+        files.extend(
+            f for f in sorted(p.rglob("*.py"))
+            if not _excluded(f)
+        )
 
 violations = []
 for f in files:
     src = f.read_text(encoding="utf-8")
 
     # --- Layer 1: can the target grammar even parse this file?
+    # feature_version kwarg requires py3.8+; on older interpreters fall back
+    # to a plain parse, whose native grammar already rejects newer syntax
+    # (e.g. walrus is a SyntaxError on py<=3.7).
     try:
-        ast.parse(src, filename=str(f), feature_version=target)
+        try:
+            ast.parse(src, filename=str(f), feature_version=target)
+        except TypeError:
+            ast.parse(src, filename=str(f))
     except SyntaxError as e:
         violations.append((f, e.lineno, f"syntax not valid on py{sys.argv[1]}: {e.msg}"))
         continue

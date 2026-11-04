@@ -55,7 +55,9 @@ npusim record --help
     npusim_{timestamp}_{user_app}
     ├── npusim.log                         # 仿真主日志（含精度对比结果）
     └── record/                            # 录制产物目录
-        ├── *.db                           # cannsim_helper SQLite DB（report 阶段的优先数据源，多卡场景为 chip*.db）
+        ├── *.db                           # cannsim_helper SQLite DB（report 阶段数据源）
+        ├── chip{N}/                        # 多卡场景（--chip > 1 或 ktest）：每卡一个子目录
+        │   └── *.db                       # 各卡的 cannsim_helper SQLite DB
         └── cannsim_helper.log             # cannsim_helper 库运行日志（诊断用）
     ```
 
@@ -63,6 +65,7 @@ npusim record --help
     | --- | --- |
     | `npusim.log` | 仿真主日志，包含启动参数、执行阶段记录、算子精度对比结果及告警信息。 |
     | `record/*.db` | cannsim_helper 生成的 SQLite 数据库，包含指令计数、IPC、存储利用率等结构化数据。 |
+    | `record/chip{N}/*.db` | 多卡场景（`--chip > 1` 或 ktest 模式）下各卡独立的契约 DB；`npusim report` 会自动识别该布局并逐卡生成 `report/chip{N}_result/`。 |
     | `record/cannsim_helper.log` | cannsim_helper 动态库的运行日志，用于排查数据采集阶段的问题。 |
 
 4. 用户可以获取算子执行结果，并进行精度的对比，结果展示在`npusim.log`，示例如下

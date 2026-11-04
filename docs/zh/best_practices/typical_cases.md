@@ -8,6 +8,8 @@ git clone https://gitcode.com/cann/cann-samples.git
 
 如需基于 `Samples/0_Introduction/matmul` 观察 `SET_FLAG` / `WAIT_FLAG`、`GET_BUF` / `RLS_BUF`，可参考[基于 Matmul 样例观察同步与 Buffer 依赖](./matmul_sync_buffer.md)。
 
+如需基于通算融合（MC2）算子验证多卡通信仿真（UBMEM 场景），可参考[基于 MoeDistributeDispatchV2 样例的多卡通信仿真（UBMEM 场景）](./mc2_communication_sim.md)。
+
 如需了解如何从仿真报告中定位缺少同步保护的 RAW/WAR/WAW 冲突，可参考[基于数据竞争检测报告定位 RAW/WAR/WAW 问题](./data_race_detection.md)。
 
 ## VF（Vector Function）性能优化

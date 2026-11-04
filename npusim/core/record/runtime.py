@@ -167,6 +167,18 @@ _CC_ARCH_DIR_BY_SOC = {
     "Ascend950DT": "dav_3510",
 }
 
+# camodel 拓扑模板随包安装（wheel 的 site-packages 或源码仓均可解析），
+# 优先模块相对路径；兼容回退到 CANN site-packages 下旧包名（cannsim）布局。
+_CAMODEL_TEMPLATES_DIR = Path(__file__).resolve().parent / "ktest" / "templates"
+
+
+def _camodel_template_dir(toolkit: str) -> Path:
+    """Resolve the camodel topology template directory."""
+    if _CAMODEL_TEMPLATES_DIR.is_dir():
+        return _CAMODEL_TEMPLATES_DIR
+    return Path(toolkit) / "python/site-packages/cannsim/core/record/ktest/templates"
+
+
 # Mirror of HCCL_MTE_MAX_RANK_NUM (HcclCombinOpParam950 windowsIn capacity)
 # in the CANN-packaged mock libhccl_fwk_camodel.so.
 CC_MAX_CHIP = 64
@@ -179,6 +191,17 @@ def _cc_mock_so(env: dict, soc_version: str):
     if not toolkit or not arch_dir:
         return None
     return Path(toolkit) / "tools" / "simulator" / arch_dir / "camodel" / "libhccl_fwk_camodel.so"
+
+
+def _cann_hccl_lib_dir(toolkit: Path):
+    """Locate the CANN arch lib64 dir that holds the real HCCL libs.
+
+    Globs <arch>-linux/lib64 layouts (e.g. aarch64-linux, x86_64-linux) for
+    the real libhccl_fwk.so; layout aliases (arm64-linux) resolve to the
+    same physical dir. First match in sorted order wins.
+    """
+    matches = sorted(toolkit.glob("*-linux/lib64/libhccl_fwk.so"))
+    return matches[0].parent if matches else None
 
 
 def cc_chip_of(environ: dict) -> int:
@@ -213,7 +236,7 @@ def apply_cc_env(env: dict, cc_chip: int, soc_version: str) -> None:
         env["ASCEND_OPP_PATH"] = os.path.join(toolkit, "opp")
     # camodel topology (number_of_chip) must be >= chip count; auto-select a template.
     if not env.get("CAMODEL_CONFIG_PATH") and toolkit:
-        tpl_dir = Path(toolkit) / "python/site-packages/cannsim/core/record/ktest/templates"
+        tpl_dir = _camodel_template_dir(toolkit)
         exact = tpl_dir / f"camodel_v100_{cc_chip}p.json"
         if exact.exists():
             env["CAMODEL_CONFIG_PATH"] = str(exact)
@@ -237,8 +260,8 @@ def apply_cc_env(env: dict, cc_chip: int, soc_version: str) -> None:
                     "CAMODEL_SIM_RANK_SIZE or set CAMODEL_CONFIG_PATH",
                     {"template_dir": str(tpl_dir)},
                 )
-    # ASCEND_HOME_PATH must point at a root whose x86_64-linux/lib64/libhccl_fwk.so
-    # and libhccl.so are swapped to the mock; prefer external root, else real CANN.
+    # ASCEND_HOME_PATH must point at a root whose arch lib64 HCCL libs are swapped
+    # to the mock; prefer external root, else real CANN.
     env.setdefault("ASCEND_HOME_PATH", toolkit)
 
 
@@ -258,10 +281,10 @@ def cc_swap_hccl(env: dict, soc_version: str):
         )
         return None
     toolkit = env.get("ASCEND_TOOLKIT_HOME") or env.get("ASCEND_HOME_PATH") or ""
-    lib_dir = Path(toolkit) / "x86_64-linux" / "lib64"
-    fwk_target = lib_dir / "libhccl_fwk.so"
-    if not fwk_target.exists():
+    lib_dir = _cann_hccl_lib_dir(Path(toolkit))
+    if lib_dir is None:
         return None
+    fwk_target = lib_dir / "libhccl_fwk.so"
     handles = []
     for target in (fwk_target, lib_dir / "libhccl.so"):
         if not target.exists():
@@ -275,8 +298,7 @@ def cc_swap_hccl(env: dict, soc_version: str):
             orig = os.readlink(target)
             target.unlink()
         else:
-            shutil.copy2(str(target), str(target) + ".ccbak")
-            target.unlink()
+            os.rename(str(target), str(target) + ".ccbak")
         target.symlink_to(str(mock_so))
         handles.append({"target": target, "orig": orig})
     return handles
@@ -299,8 +321,7 @@ def cc_restore_hccl(handles) -> None:
         if orig is None:
             bak = str(target) + ".ccbak"
             if Path(bak).exists():
-                shutil.copy2(bak, str(target))
-                Path(bak).unlink(missing_ok=True)
+                os.rename(bak, str(target))
         else:
             target.symlink_to(orig)
 

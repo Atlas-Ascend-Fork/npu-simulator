@@ -48,6 +48,7 @@ from npusim.core.report.report_strategy_impl import _REPORT_CHAIN
 from npusim.core.report.report_path import (
     _resolve_paths,
     _find_cannsim_helper_db_input,
+    _find_chip_db_dirs,
     _find_instr_bin,
     _find_log_ca,
     _build_biprof_args,
@@ -58,6 +59,29 @@ from npusim.core.report.report_path import (
 _CHIP_INSTR_RE = re.compile(r"^chip(\d*)_instr\.bin$")
 _INSTR_ENTRY_SIZE = struct.calcsize("<QIIQB200s200s7x")
 
+# report 后端的 SQL 与契约 DB 的视图使用窗口函数（OVER），要求 SQLite >= 3.25。
+_MIN_SQLITE_VERSION = (3, 25, 0)
+
+
+def _check_sqlite_runtime() -> bool:
+    """校验当前解释器解析到的 libsqlite3 支持窗口函数（>= 3.25）。
+
+    契约 DB 的 schema 视图与 BiProfRunner 查询大量使用 ``OVER``，旧版
+    SQLite（如 /usr/local/sqlite3 下 3.17）连打开 DB 都会报
+    ``near "OVER": syntax error``，在此提前给出可操作的报错。
+    """
+    if sqlite3.sqlite_version_info >= _MIN_SQLITE_VERSION:
+        return True
+    print_error(
+        f"python sqlite3 runtime is {sqlite3.sqlite_version}; >= 3.25.0 is required "
+        "(window functions are used by the report SQL and the contract DB schema). "
+        "Fix the libsqlite3 the interpreter resolves to, e.g. upgrade the build under "
+        "/usr/local/sqlite3 (python's _sqlite3 module has RUNPATH pointing there) "
+        "or preload a newer libsqlite3.so.0, then re-run. Check via: "
+        "python3 -c 'import sqlite3; print(sqlite3.sqlite_version)'"
+    )
+    return False
+
 
 class _ReportContext(NamedTuple):
     """Namespaced report execution context."""
@@ -65,8 +89,6 @@ class _ReportContext(NamedTuple):
     export_abs: Path
     output_abs: Path
     input_db_path: Optional[Path]
-    instr_bin_path: Optional[Path]
-    log_ca_path: Optional[Path]
     core_ids: Tuple[int, ...]
 
 
@@ -436,21 +458,17 @@ def generate_report(
     context = _prepare_report_context(export, output, core_id)
     if context is None:
         return False
-    export_abs, output_abs, input_db_path, instr_bin_path, log_ca_path, core_ids = context
+    export_abs, output_abs, input_db_path, core_ids = context
     success = _run_report_backend(
         output_abs,
         export_abs,
         input_db_path=input_db_path,
-        instr_bin_path=instr_bin_path,
-        log_ca_path=log_ca_path,
         core_id=core_id,
         core_ids=core_ids,
         export_vf=export_vf,
         smart_pipes=smart_pipes,
         multi_chip=multi_chip,
     )
-    if success:
-        _generate_aggregate_report(output_abs)
 
     # ⑥ 多核流水图合并（仅单卡模式；多卡模式由 generate_multi_chip_report
     #    在循环结束后统一合并，避免重复触发）。需显式带 -n 才执行。
@@ -479,11 +497,13 @@ def _prepare_report_context(
         return None
     export_abs, output_abs = paths
 
-    # ② 查找输入源：helper DB 优先，否则 fallback 到 instr.bin / log_ca。
-    input_db_path, instr_bin_path, log_ca_path = _resolve_report_input(export_abs)
-    if input_db_path is None and instr_bin_path is None and log_ca_path is None:
+    # ② 查找输入源：仅支持 helper 契约 DB（instr.bin / log_ca 已被后端移除）。
+    input_db_path = _find_cannsim_helper_db_input(export_abs)
+    if input_db_path is None:
+        _print_missing_db_input_error(export_abs)
         return None
-    if input_db_path is not None and not _validate_helper_contract(input_db_path):
+    print_info(f"Found cannsim_helper DB input: {input_db_path}")
+    if not _validate_helper_contract(input_db_path):
         return None
 
     # ③ 解析 core_id，校验通过后透传给 BiProfRunner
@@ -496,31 +516,21 @@ def _prepare_report_context(
         export_abs=export_abs,
         output_abs=output_abs,
         input_db_path=input_db_path,
-        instr_bin_path=instr_bin_path,
-        log_ca_path=log_ca_path,
         core_ids=core_ids,
     )
 
 
-def _resolve_report_input(export_abs: Path) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
-    """选择 helper DB / instr.bin / log_ca 中可用的报告输入源。"""
-    input_db_path = _find_cannsim_helper_db_input(export_abs)
-    if input_db_path is not None:
-        print_info(f"Found cannsim_helper DB input: {input_db_path}")
-        return input_db_path, None, None
-
+def _print_missing_db_input_error(export_abs: Path) -> None:
+    """无契约 DB 时按实际存在的产物给出可操作的错误信息。"""
     instr_bin_path, _ = _find_instr_bin(export_abs)
-    if instr_bin_path is not None:
-        print_info(f"Found instr.bin: {instr_bin_path}")
-        return None, instr_bin_path, None
-
-    log_ca_path = _find_log_ca(export_abs)
-    if log_ca_path is not None:
-        print_info(f"Found log_ca directory: {log_ca_path}")
-        return None, None, log_ca_path
-
-    print_error("No log source found in export directory. Need a cannsim_helper DB, instr.bin, or log_ca.")
-    return None, None, None
+    if instr_bin_path is not None or _find_log_ca(export_abs) is not None:
+        print_error(
+            "instr.bin / log_ca report input is no longer supported by any report "
+            "backend (only cannsim_helper contract DBs are accepted). "
+            "Re-record the run with a matching cannsim_helper to produce DBs."
+        )
+    else:
+        print_error(f"No cannsim_helper DB found in export directory. Expected export/record/*.db: {export_abs}")
 
 
 def _validate_helper_contract(input_db_path: Path) -> bool:
@@ -533,8 +543,6 @@ def _run_report_backend(
     export_abs: Path,
     *,
     input_db_path: Optional[Path],
-    instr_bin_path: Optional[Path],
-    log_ca_path: Optional[Path],
     core_id: Optional[str],
     core_ids,
     export_vf: bool,
@@ -546,8 +554,6 @@ def _run_report_backend(
     biprof_args = _build_biprof_args(
         output_abs,
         input_db_path=input_db_path,
-        instr_bin_path=instr_bin_path,
-        log_ca_path=log_ca_path,
         core_id=core_id,
         vf_report_json=export_vf,
         smart_pipes=smart_pipes,
@@ -584,22 +590,6 @@ def _export_npu_rep(output_abs: Path, input_db_path: Path) -> None:
         export_npu_rep(output_abs, input_db_path)
     except Exception as e:  # noqa: BLE001 -- best-effort post-processing
         print_warn(f"npu-rep export skipped: {e}")
-
-
-def _generate_aggregate_report(output_abs: Path) -> None:
-    """生成聚合 SUMMARY/index 报告；失败只降级提示，不阻断主报告。"""
-    try:
-        from npusim.dashboard import generate_summary_index
-
-        results_dir = Path(output_abs)
-        if results_dir.is_dir():
-            print_info("Generating aggregated index.html...")
-            if generate_summary_index(results_dir):
-                print_info("Aggregated index.html generated successfully!")
-            else:
-                print_info("Aggregated index.html generation had warnings.")
-    except Exception as e:
-        print_info(f"Skipped aggregated HTML: {e}")
 
 
 def generate_multi_chip_report(
@@ -671,6 +661,53 @@ def generate_multi_chip_report(
     return all_ok
 
 
+def generate_multi_chip_db_report(
+    export: str,
+    chip_db_dirs: List[Path],
+    output: Optional[str] = None,
+    core_id: Optional[str] = None,
+    object_file: Optional[str] = None,
+    export_vf: bool = True,
+    smart_pipes: bool = False,
+    merge_trace: bool = False,
+) -> bool:
+    """Generate per-chip reports for the helper per-chip DB layout.
+
+    cannsim_helper >= 0.8 multi-chip runs (``record --chip`` and ktest both
+    set ``CANNSIM_HELPER_PER_CHIP_DB=1``) write ``record/chip{N}/{kernel}.db``.
+    Each chip dir is fed through the single-chip contract-DB flow with output
+    ``chip{N}_result`` so the ``-m`` merge tooling (``_CHIP_INDEX_RE``)
+    keeps working. Single-chip ktest runs share this layout with one dir.
+    """
+    export_abs = Path(export).resolve()
+    output_root = Path(output).resolve() if output else export_abs / "report"
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    print_info("Detected multi-card cannsim_helper DB analysis mode.")
+    print_info("Found chip DB dirs: " + ", ".join(d.name for d in chip_db_dirs))
+
+    all_ok = True
+    for chip_dir in chip_db_dirs:
+        chip_output = output_root / f"{chip_dir.name}_result"
+        print_info(f"Generating report for {chip_dir.name} -> {chip_output}")
+        ok = generate_report(
+            export=str(chip_dir),
+            output=str(chip_output),
+            core_id=core_id,
+            object_file=object_file,
+            export_vf=export_vf,
+            smart_pipes=smart_pipes,
+            multi_chip=True,
+        )
+        all_ok = all_ok and ok
+
+    # ⑥ 多核流水图合并：与 generate_multi_chip_report 相同的全局合并语义。
+    if all_ok and merge_trace and core_id:
+        _merge_core_traces(output_root)
+
+    return all_ok
+
+
 def _merge_core_traces(report_dir) -> None:
     """同时生成两种多核合并产物。best-effort：失败打印 warning 不中断主流程。
 
@@ -723,9 +760,13 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
     Command-line interface for generating performance reports.
     VF report JSON is always included (full report).
 
-    分流：
-    - 目录里有 ``chip*_instr.bin`` → 当前多卡 instr.bin 路径
-    - 否则走单卡：helper DB（数据合同）或 instr.bin / log_ca
+    分流（按优先级）：
+    - 目录里有 ``chip*_instr.bin`` → 旧多卡 instr.bin 路径（需配对 chip*.db）
+    - 目录里有 ``chip{N}/`` 契约 DB 目录 → 多卡 per-chip DB 路径
+      （cannsim_helper >= 0.8 的 record --chip / ktest 布局）
+    - 否则走单卡 helper DB（数据合同）
+
+    instr.bin / log_ca 输入已被两个 report 后端移除，仅明确报错。
 
     BiProf 模块后端成功时，每个契约 DB 额外产出 ``{db_stem}.npu-rep`` 归档
     （位于该 DB 对应的 ``results/{...}_reports/`` 目录内，无报告目录时回退
@@ -740,6 +781,9 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
     Returns:
         bool: True if report generation succeeded, False otherwise.
     """
+    if not _check_sqlite_runtime():
+        return False
+
     export_abs = Path(export).resolve()
 
     # 未显式指定 --object-file 时，回退到 record 目录里 .user-app 标记记录的
@@ -757,10 +801,21 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
             merge_trace=merge_trace,
         )
 
+    chip_db_dirs = _find_chip_db_dirs(export_abs) if export_abs.exists() else []
+    if chip_db_dirs:
+        return generate_multi_chip_db_report(
+            export=export,
+            chip_db_dirs=chip_db_dirs,
+            output=output,
+            core_id=core_id,
+            object_file=object_file,
+            export_vf=export_vf,
+            smart_pipes=smart_pipes,
+            merge_trace=merge_trace,
+        )
+
     if _find_cannsim_helper_db_input(export_abs):
         print_info("Detected cannsim_helper DB analysis mode.")
-    else:
-        print_info("Detected instr.bin / log_ca analysis mode.")
     return generate_report(
         export=export,
         output=output,

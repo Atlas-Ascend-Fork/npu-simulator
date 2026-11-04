@@ -13,11 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from npusim.core.record.runtime import build_execution_env as record_build_env
+from npusim.core.record.runtime import _camodel_template_dir, _CAMODEL_TEMPLATES_DIR, apply_cc_env
+
+runtime_mod = importlib.import_module("npusim.core.record.runtime")
+
+
+class CamodelTemplateDirTests(unittest.TestCase):
+    def test_prefers_module_relative_templates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            toolkit = Path(tmp) / "toolkit"
+            self.assertEqual(_camodel_template_dir(str(toolkit)), _CAMODEL_TEMPLATES_DIR)
+
+    def test_falls_back_to_legacy_cannsim_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / "toolkit" / "python/site-packages/cannsim/core/record/ktest/templates"
+            legacy.mkdir(parents=True)
+            with patch.object(runtime_mod, "_CAMODEL_TEMPLATES_DIR", Path("/nonexistent")):
+                self.assertEqual(_camodel_template_dir(str(Path(tmp) / "toolkit")), legacy)
+
+    def test_apply_cc_env_selects_module_relative_template(self):
+        env = {"ASCEND_TOOLKIT_HOME": "/tmp/fake-toolkit"}
+        apply_cc_env(env, 2, "Ascend950")
+        self.assertTrue(env["CAMODEL_CONFIG_PATH"].endswith("camodel_v100_2p.json"))
+        self.assertIn(str(_CAMODEL_TEMPLATES_DIR), env["CAMODEL_CONFIG_PATH"])
 
 
 class RecordRuntimeTests(unittest.TestCase):
