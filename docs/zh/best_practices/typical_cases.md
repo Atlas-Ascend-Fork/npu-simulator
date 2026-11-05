@@ -32,14 +32,14 @@ cmake -S . -B build -DNPU_ARCH=dav-3510
 cmake --build build --target rms_norm_quant_story
 ```
 
-2、运行rms_norm_quant_0_naive仿真，分析对应的性能报告，指令流水图说明可参考[用户指南](../user_guide/01_user_guide.md#指令流水图)，AiCore利用率等其他报告的说明可参考[用户指南](../user_guide/01_user_guide.md#aicore利用率报告)。
+2、运行rms_norm_quant_0_naive仿真，分析对应的性能报告，指令流水图说明可参考[用户指南](../user_guide/01_user_guide.md#指令流水图)，AI Core 利用率等其他报告的说明可参考[用户指南](../user_guide/01_user_guide.md#ai-core-利用率报告)。
 ```bash
 # 进入build目录
 cd build/Samples/2_Performance/rms_norm_quant_story
 # 运行仿真
 npusim record -s Ascend950 ./rms_norm_quant_0_naive -g
 ```
-- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到只有core0的AIV0在运行，其他核心都是空闲，另外VF的执行IPC偏低约0.3左右，且 数据搬运 与 计算 交替执行、无重叠。示例图如下：
+- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到只有core0的AIV0在运行，其他核心都是空闲，另外VF的执行IPC偏低约0.3左右，且 数据搬运 与 计算 交替执行、无重叠。示例图如下：
 ![rms_norm_quant_0_naive指令流水图](images/rms_native_0.png)
 
 
@@ -49,8 +49,8 @@ npusim record -s Ascend950 ./rms_norm_quant_0_naive -g
 ```bash
 npusim record -s Ascend950 ./rms_norm_quant_5_ub_utilization -g
 ```
-- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到core0的AIV0和AIV1都已经运行，VF的执行IPC已经提升到1.4左右，且数据搬运与计算是并行，示例图如下：
-![rrms_norm_quant_5_ub_utilization指令流水图](images/rsm_ub_5.png)
+- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到core0的AIV0和AIV1都已经运行，VF的执行IPC已经提升到1.4左右，且数据搬运与计算是并行，示例图如下：
+![rms_norm_quant_5_ub_utilization指令流水图](images/rsm_ub_5.png)
 
 
 ## matmul性能优化
@@ -77,14 +77,14 @@ python3 gen_data.py 256 256 256
 ```bash
 npusim record -s Ascend950 ./matmul_tutorial_mxfp4_base -u '256 256 256' -g
 ```
-- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到GM→L1 搬运与 L1→L0 搬运及 MMAD 计算 完全串行，流水没有重叠，硬件利用率低下。
+- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到GM→L1 搬运与 L1→L0 搬运及 MMAD 计算 完全串行，流水没有重叠，硬件利用率低下。
 
 
-3、针对上述问题，可以采用Double-Buffer、SWAT 调度优化等方法进行算子性能优化，具体参考[matmul_stroy](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例代码。
+3、针对上述问题，可以采用Double-Buffer、SWAT 调度优化等方法进行算子性能优化，具体参考[matmul_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例代码。
 
 4、问题修复后，运行仿真，查看最终结果。
 ```bash
 npusim record -s Ascend950 ./matmul_tutorial_mxfp4_a_fullload -u '256 256 256' -g
 ```
 
-- 查看core0的指令流水图，使用perfetto打开trace_core0.json，可以看到流水已经并行，硬件利用率提升。
+- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到流水已经并行，硬件利用率提升。

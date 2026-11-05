@@ -2,7 +2,7 @@
 
 ## 1. VF 简介
 
-VF（Vector Function）是 VectorCore 的核心计算单元，由一组连续的 vector 指令组成。Kernel 执行过程中，VF 之间串行执行，最慢的 VF 决定整体性能。
+VF（Vector Function）是 Vector Core 的核心计算单元，由一组连续的 vector 指令组成。Kernel 执行过程中，VF 之间串行执行，最慢的 VF 决定整体性能。
 
 衡量 VF 性能的核心指标是 IPC（Instructions Per Cycle），其中 **exec 分量**反映向量执行算力的利用率。理论上限为 2（双发射）。
 
@@ -30,11 +30,17 @@ npusim record -s Ascend950 -g vf <user_app>
 ```
 npusim_out/
 └── npusim_<timestamp>_<kernel>/
-    ├── report/
-    │   └── results/            # 仿真报告目录（含 summary.json、trace流水图等）
-    └── vf_report/
-        └── kernel_launch_0_vf_report.json # VF 性能分析 JSON 报告
+    ├── record/                                       # 仿真数据（*.db、instr.bin 等）
+    └── report/
+        └── results/                                  # 仿真报告目录
+            └── kernel_<NNNN>_<kernel_name>_reports/  # 每个 kernel launch 一个目录（4 位 launch 编号 + kernel 名）
+                ├── summary.json                      # 性能分析汇总
+                ├── aicore_utilization.json           # AI Core 利用率报告
+                ├── core_<M>/trace_core<M>.json       # 指令流水图
+                └── <NNNN>_<kernel_name>_vf_report.json  # VF 性能分析 JSON 报告
 ```
+
+> 说明：VF JSON 文件名由 kernel 的 DB 文件名派生（如 `0001_pure_vf.db` → `0001_pure_vf_vf_report.json`）；不含 VF 调用的 kernel（如 warmup kernel）不会生成该文件。
 
 
 ## 3. JSON 数据结构
