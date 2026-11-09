@@ -35,7 +35,8 @@ def _add_record_parser(subparsers):
         "user_app",
         nargs="?",
         default=None,
-        help="Path or command to run (e.g. ./app, python train.py, bash run.sh). "
+        help="Path or command to run (e.g. ./app, 'python train.py', 'bash run.sh'). "
+        "Quote commands containing spaces as a single argument. "
         "Required when -c is not specified; not allowed when -c is specified.",
     )
     parser.add_argument(
