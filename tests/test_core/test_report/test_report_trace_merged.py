@@ -160,6 +160,31 @@ class MergeChipTests(unittest.TestCase):
             for name in _pnames(data):
                 self.assertRegex(name, r"^CORE\d+\.(AIC|AIV0|AIV1)$", f"bad pid: {name}")
 
+    def test_merge_reads_every_trace_shard(self):
+        """A core split into trace_core0.json + trace_core0_1.json merges both.
+
+        report_path keeps the shard index in the file name when one core's
+        trace exceeded --json-max-size; the merge must read every shard,
+        not just the first one it finds.
+        """
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            _build_multi_chip_layout(root, chips=(0,), kernels=(0,), cores=(0,))
+            core_dir = root / "chip0_result" / "results" / "kernel_0_reports" / "core_0"
+            shard = {
+                "displayTimeUnit": "ns",
+                "traceEvents": [{"ph": "X", "name": "only_in_shard_1", "pid": 0, "tid": 0, "ts": 99, "dur": 1}],
+            }
+            (core_dir / "trace_core0_1.json").write_text(json.dumps(shard))
+
+            out = str(root / "out.json")
+            merge_chip(str(root / "chip0_result"), "kernel_0_reports", out)
+            events = json.load(open(out))["traceEvents"]
+            names = [e.get("name") for e in events]
+            self.assertEqual(names.count("only_in_shard_1"), 1, "shard 1 events must be merged")
+            # Events from the base file must still be present alongside it.
+            self.assertGreater(len(events), 1)
+
     def test_strips_slot_suffix_from_tid_and_task_id(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)

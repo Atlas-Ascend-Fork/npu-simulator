@@ -26,8 +26,10 @@ from npusim.core.public.comm import print_warn
 
 SLOT_SUFFIX_RE = re.compile(r"_SLOT\d+$")
 
-# Matches a per-core trace file: trace_core<N>.json or trace_core<N>.json.gz
-TRACE_FILE_RE = re.compile(r"^trace_core\d+\.json(\.gz)?$")
+# Matches a per-core trace file: trace_core<N>.json or trace_core<N>.json.gz,
+# optionally followed by a shard index (trace_core<N>_<k>.json[.gz]) as
+# produced by report_path when one core's trace was split by --json-max-size.
+TRACE_FILE_RE = re.compile(r"^trace_core(\d+)(?:_(\d+))?\.json(\.gz)?$")
 
 # Extract numeric index from chip<N>_result / kernel_<N>_reports dir names.
 _CHIP_INDEX_RE = re.compile(r"^chip(\d+)_result$")
@@ -87,30 +89,36 @@ def strip_slot(name):
     return SLOT_SUFFIX_RE.sub("", name)
 
 
-def find_trace_file(core_dir, core_idx):
-    """Locate the trace json file inside a core_<N> directory.
+def find_trace_files(core_dir, core_idx):
+    """Locate all trace json files inside a ``core_<N>`` directory.
 
-    Accepts both uncompressed (trace_core<N>.json) and gzipped
-    (trace_core<N>.json.gz) forms. Returns the path if found, else None.
-    The preferred name based on the directory's core index is tried
-    first; if absent, any file matching TRACE_FILE_RE in the directory
-    is accepted (handles directory/filename number mismatches).
+    Accepts uncompressed (``trace_core<N>.json``) and gzipped
+    (``trace_core<N>.json.gz``) forms, plus the shard form
+    ``trace_core<N>_<k>.json[.gz]`` written by ``report_path`` when one
+    core's trace exceeded ``--json-max-size``. Shards are returned in
+    ascending shard order so their events can be concatenated back into
+    one per-core event list.
+
+    Returns an empty list when no trace file is found.
     """
-    # Preferred names: derive filename from the directory's core index.
-    for fname in (f"trace_core{core_idx}.json", f"trace_core{core_idx}.json.gz"):
-        p = os.path.join(core_dir, fname)
-        if os.path.isfile(p):
-            return p
-    # Fallback: scan the directory for any matching trace file. This
-    # covers cases where the filename number differs from the directory
-    # number, or where the core index could not be parsed.
     try:
-        for fname in sorted(os.listdir(core_dir)):
-            if TRACE_FILE_RE.match(fname):
-                return os.path.join(core_dir, fname)
+        names = os.listdir(core_dir)
     except OSError:
-        pass
-    return None
+        return []
+
+    def _order(fname):
+        m = TRACE_FILE_RE.match(fname)
+        if not m:
+            return None
+        # Prefer the file whose core index matches the directory, then sort
+        # by shard index so trace_core0.json precedes trace_core0_1.json.
+        return (0 if int(m.group(1)) == core_idx else 1, int(m.group(1)), int(m.group(2) or 0))
+
+    matched = [(key, fname) for fname in names for key in [_order(fname)] if key is not None]
+    if not matched:
+        return []
+    matched.sort()
+    return [os.path.join(core_dir, fname) for _, fname in matched]
 
 
 def load_trace_json(path):
@@ -123,6 +131,27 @@ def load_trace_json(path):
             return json.load(f)
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_core_trace_shards(trace_paths):
+    """Load and concatenate one core's trace shards into a single event list.
+
+    The engine splits a core's trace when it exceeds ``--json-max-size``;
+    ``report_path`` keeps the shard index in the file name so every shard
+    survives on disk. Merging must therefore read all of them, otherwise
+    only the first (or whichever the glob picked) is merged.
+
+    Returns ``(events, display_time_unit)``; the first shard carrying a
+    ``displayTimeUnit`` wins.
+    """
+    events = []
+    display_time_unit = None
+    for path in trace_paths:
+        data = load_trace_json(path)
+        if display_time_unit is None:
+            display_time_unit = data.get("displayTimeUnit")
+        events.extend(data.get("traceEvents", []))
+    return events, display_time_unit
 
 
 def natural_key(s):
@@ -259,14 +288,13 @@ def _collect_core_families(reports_root, core_names):
     core_cache = {}
     for core_name in core_names:
         core_idx = int(core_name.split("_")[1])
-        trace_path = find_trace_file(os.path.join(reports_root, core_name), core_idx)
-        if trace_path is None:
+        trace_paths = find_trace_files(os.path.join(reports_root, core_name), core_idx)
+        if not trace_paths:
             continue
-        data = load_trace_json(trace_path)
-        core_events = data.get("traceEvents", [])
+        core_events, display_time_unit = _load_core_trace_shards(trace_paths)
         family_map = build_family_map(core_events)
         core_families[core_idx] = sorted(set(family_map.values()), key=natural_key)
-        core_cache[core_idx] = (core_events, family_map, data.get("displayTimeUnit"))
+        core_cache[core_idx] = (core_events, family_map, display_time_unit)
     return core_families, core_cache
 
 

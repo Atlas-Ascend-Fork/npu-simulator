@@ -89,6 +89,48 @@ class ReportPathTests(unittest.TestCase):
             self.assertTrue((kernel_dir / "core_0" / "trace_core0.json").exists())
             self.assertTrue((kernel_dir / "core_0" / "trace_core0_smart_pipe.json").exists())
 
+    def test_reorganize_keeps_every_trace_shard(self):
+        """A core whose trace was split by --json-max-size must keep all shards.
+
+        The engine writes core_0_tracing_report_{0,1,2}.json for one core when
+        the trace exceeds the size limit. Collapsing them onto a single
+        trace_core0.json would silently drop the other shards' events.
+        """
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            kernel_dir = root / "results" / "kernel_0_reports"
+            kernel_dir.mkdir(parents=True)
+            for index in range(3):
+                (kernel_dir / f"core_0_tracing_report_{index}.json").write_text(
+                    '{"traceEvents": [{"i": %d}]}' % index, encoding="utf-8"
+                )
+
+            _reorganize_reports_by_core(root)
+
+            core_dir = kernel_dir / "core_0"
+            self.assertEqual(
+                sorted(p.name for p in core_dir.iterdir()),
+                ["trace_core0.json", "trace_core0_1.json", "trace_core0_2.json"],
+            )
+            payloads = [
+                (core_dir / name).read_text(encoding="utf-8")
+                for name in ("trace_core0.json", "trace_core0_1.json", "trace_core0_2.json")
+            ]
+            for index, payload in enumerate(payloads):
+                self.assertEqual(payload, '{"traceEvents": [{"i": %d}]}' % index)
+
+    def test_reorganize_keeps_trace_shard_gz_suffix(self):
+        """Sharded gzip traces keep both the shard index and the .gz suffix."""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            kernel_dir = root / "results" / "kernel_0_reports"
+            kernel_dir.mkdir(parents=True)
+            (kernel_dir / "core_0_tracing_report_1.json.gz").write_bytes(b"x")
+
+            _reorganize_reports_by_core(root)
+
+            self.assertTrue((kernel_dir / "core_0" / "trace_core0_1.json.gz").is_file())
+
     def test_reorganize_moves_qi_core_reports_into_core_dir(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)

@@ -203,19 +203,29 @@ def _parse_core_id(
     return _shared_parse_core_id(core_id, _MAX_CORES, default=default)
 
 
-# Regex: tracing report 文件名匹配，用于重命名为 trace_core{id}.json[.gz]
+# Regex: tracing report 文件名匹配，用于重命名为 trace_core{id}[_{part}].json[.gz]
 # 匹配:
 #   core_0_tracing_report_0.json / core_0_tracing_report_0.json.gz
 #   core_0_smart_pipe_report_0.json / core_0_smart_pipe_report_0.json.gz
-_TRACE_REPORT_RE = re.compile(r"^core_(\d+)_(tracing|smart_pipe)_report_\d+\.(json(?:\.gz)?)$")
+_TRACE_REPORT_RE = re.compile(r"^core_(\d+)_(tracing|smart_pipe)_report_(\d+)\.(json(?:\.gz)?)$")
 
 
 def _rename_trace_if_match(filename: str) -> Optional[str]:
-    """如果文件名匹配 tracing report，返回 dashboard 使用的 trace 文件名。"""
+    """如果文件名匹配 tracing report，返回 dashboard 使用的 trace 文件名。
+
+    引擎在一个 core 的 trace 超过 ``--json-max-size`` 时会把它切成
+    ``core_{id}_{kind}_report_{k}`` 多个分片（见
+    ``ChromeTracingDefault.divide_json``）。分片序号必须保留在目标名里：
+    否则每个分片都会被改写成同一个 ``trace_core{id}.json``，写到同一路径，
+    只剩下最后搬过去的那一片，其余分片的事件静默丢失。
+    序号 0 仍命名为 ``trace_core{id}.json``（单分片时与旧名一致），
+    其余分片为 ``trace_core{id}_{k}.json``。
+    """
     m = _TRACE_REPORT_RE.match(filename)
     if m:
         suffix = "_smart_pipe" if m.group(2) == "smart_pipe" else ""
-        return f"trace_core{m.group(1)}{suffix}.{m.group(3)}"
+        part = "" if m.group(3) == "0" else f"_{m.group(3)}"
+        return f"trace_core{m.group(1)}{suffix}{part}.{m.group(4)}"
     return None
 
 
