@@ -62,7 +62,7 @@
 
    - \$\{cann\_version\}：表示CANN软件包的版本号。
    - \$\{arch\}：表示CPU架构，如aarch64、x86_64。
-   - \$\{soc\_name\}：表示NPU型号名称，当前支持 `Ascend950`。
+   - \$\{soc\_name\}：表示 ops 安装包文件名中的芯片代号，例如 Ascend 950 系列使用 `950`。
    - \$\{install\_path\}：表示指定安装路径，ops包需与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
 
 环境部署完成后，请继续以下步骤：
