@@ -70,6 +70,16 @@ def preprocess_gen_report_argv(argv):
     return out
 
 
+def normalize_sim_mode(raw) -> str:
+    """Normalize --sim_mode value: "ca"/"pv" (case-insensitive) -> "CA"/"PV"."""
+    mode = str(raw).lower()
+    if mode == "pv":
+        return "PV"
+    if mode == "ca":
+        return "CA"
+    raise ValueError(f"invalid sim_mode: {raw!r} (expected 'ca' or 'pv')")
+
+
 def build_record_config_from_args(args) -> RecordConfig:
     return RecordConfig(
         user_app=Path(args.user_app),
@@ -79,6 +89,6 @@ def build_record_config_from_args(args) -> RecordConfig:
         user_option=args.user_option,
         object_file=getattr(args, "object_file", "") or "",
         core_id=getattr(args, "core_id", "") or "",
-        model="PV" if getattr(args, "pv", False) else "CA",
+        model=normalize_sim_mode(getattr(args, "sim_mode", "ca")),
         chip=getattr(args, "chip", 0) or 0,
     )

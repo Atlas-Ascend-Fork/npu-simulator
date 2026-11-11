@@ -17,6 +17,7 @@ import unittest
 
 from npusim.core.record.config import (
     normalize_gen_report,
+    normalize_sim_mode,
     preprocess_gen_report_argv,
     build_record_config_from_args,
 )
@@ -81,16 +82,34 @@ class GenReportCliTest(unittest.TestCase):
         self.assertEqual(normalize_gen_report(args.gen_report), "")
 
 
-class PvFlagConfigTest(unittest.TestCase):
+class SimModeConfigTest(unittest.TestCase):
     def test_build_record_config_defaults_to_ca(self):
         args = _parse(["record", "ops_test", "-s", "Ascend950"])
         cfg = build_record_config_from_args(args)
         self.assertEqual(cfg.model, "CA")
 
     def test_build_record_config_with_pv(self):
-        args = _parse(["record", "ops_test", "-s", "Ascend950", "--pv"])
+        args = _parse(["record", "ops_test", "-s", "Ascend950", "--sim_mode", "pv"])
         cfg = build_record_config_from_args(args)
         self.assertEqual(cfg.model, "PV")
+
+    def test_build_record_config_with_ca(self):
+        args = _parse(["record", "ops_test", "-s", "Ascend950", "--sim_mode", "ca"])
+        cfg = build_record_config_from_args(args)
+        self.assertEqual(cfg.model, "CA")
+
+    def test_build_record_config_sim_mode_case_insensitive(self):
+        args = _parse(["record", "ops_test", "-s", "Ascend950", "--sim_mode", "PV"])
+        cfg = build_record_config_from_args(args)
+        self.assertEqual(cfg.model, "PV")
+
+    def test_normalize_sim_mode(self):
+        self.assertEqual(normalize_sim_mode("ca"), "CA")
+        self.assertEqual(normalize_sim_mode("pv"), "PV")
+        self.assertEqual(normalize_sim_mode("CA"), "CA")
+        self.assertEqual(normalize_sim_mode("PV"), "PV")
+        with self.assertRaises(ValueError):
+            normalize_sim_mode("xx")
 
 
 if __name__ == "__main__":

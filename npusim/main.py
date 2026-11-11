@@ -23,7 +23,11 @@ import sys
 from pathlib import Path
 
 from npusim.core.record import record, RecordConfig, ktest, KtestConfig
-from npusim.core.record.config import normalize_gen_report, preprocess_gen_report_argv
+from npusim.core.record.config import (
+    normalize_gen_report,
+    normalize_sim_mode,
+    preprocess_gen_report_argv,
+)
 from npusim.core.report import report
 from npusim.core.public.comm import welcome
 
@@ -85,12 +89,13 @@ def _add_record_parser(subparsers):
         "camodel ./sim with the case directory symlinked as 'case'.",
     )
     parser.add_argument(
-        "--pv",
-        action="store_true",
-        default=False,
-        help="Use programmer-view (PV) simulation: functional only, faster, "
-        "without accurate timing. If not specified, accurate timing simulation "
-        "is used.",
+        "--sim_mode",
+        type=str.lower,
+        choices=["ca", "pv"],
+        default="ca",
+        help="Simulation mode: 'pv' for programmer-view (functional only, faster, "
+        "without accurate timing) or 'ca' for accurate timing simulation. "
+        "Defaults to 'ca'.",
     )
     parser.add_argument(
         "--chip",
@@ -186,7 +191,7 @@ def handle_record_command(args, parser):
             case_dir=Path(args.case_dir),
             output=Path(args.output),
             gen_report=normalize_gen_report(args.gen_report),
-            model="PV" if args.pv else "CA",
+            model=normalize_sim_mode(args.sim_mode),
         )
         return 0 if ktest(cfg) else 1
 
@@ -206,7 +211,7 @@ def handle_record_command(args, parser):
         user_option=args.user_option,
         object_file=getattr(args, "object_file", "") or "",
         core_id=getattr(args, "core_id", "") or "",
-        model="PV" if args.pv else "CA",
+        model=normalize_sim_mode(args.sim_mode),
         chip=getattr(args, "chip", 0) or 0,
     )
     return 0 if record(cfg) else 1

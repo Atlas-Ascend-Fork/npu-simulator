@@ -38,16 +38,40 @@ class MainParserTests(unittest.TestCase):
     def test_record_parser_defaults(self):
         args = _parse(["record", "app", "-s", "Ascend950"])
         self.assertEqual(args.command, "record")
-        self.assertFalse(args.pv)
+        self.assertEqual(args.sim_mode, "ca")
 
     def test_record_parser_with_all_options(self):
         args = _parse(
-            ["record", "app", "-s", "Ascend950", "-o", "/tmp/out", "-u", "--opt 1", "-n", "0-2", "--pv", "-g", "vf"]
+            [
+                "record",
+                "app",
+                "-s",
+                "Ascend950",
+                "-o",
+                "/tmp/out",
+                "-u",
+                "--opt 1",
+                "-n",
+                "0-2",
+                "--sim_mode",
+                "pv",
+                "-g",
+                "vf",
+            ]
         )
         self.assertEqual(args.user_app, "app")
         self.assertEqual(args.output, "/tmp/out")
         self.assertEqual(args.core_id, "0-2")
-        self.assertTrue(args.pv)
+        self.assertEqual(args.sim_mode, "pv")
+
+    def test_record_parser_sim_mode_case_insensitive(self):
+        args = _parse(["record", "app", "-s", "Ascend950", "--sim_mode", "PV"])
+        self.assertEqual(args.sim_mode, "pv")
+
+    def test_record_parser_sim_mode_invalid_value_rejected(self):
+        with self.assertRaises(BaseException) as cm:
+            _parse(["record", "app", "-s", "Ascend950", "--sim_mode", "xx"])
+        self.assertEqual(cm.exception.code, 2)
 
     def test_record_case_dir_parser(self):
         args = _parse(["record", "-c", "/cases/x", "-o", "/tmp/out"])

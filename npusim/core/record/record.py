@@ -561,12 +561,13 @@ if __name__ == "__main__":
         "Same format as `npusim report -n`: all, 0-2,12-14, 5.",
     )
     parser.add_argument(
-        "--pv",
-        action="store_true",
-        default=False,
-        help="Use programmer-view (PV) simulation: functional only, faster, "
-        "without accurate timing. If not specified, accurate timing simulation "
-        "is used.",
+        "--sim_mode",
+        type=str.lower,
+        choices=["ca", "pv"],
+        default="ca",
+        help="Simulation mode: 'pv' for programmer-view (functional only, faster, "
+        "without accurate timing) or 'ca' for accurate timing simulation. "
+        "Defaults to 'ca'.",
     )
 
     args = parser.parse_args(preprocess_gen_report_argv(sys.argv[1:]))
