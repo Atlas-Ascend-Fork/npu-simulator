@@ -77,8 +77,9 @@ def _add_record_parser(subparsers):
         help="AI core(s) whose logs are enabled during simulation via "
         "CORE_ENABLE_MASK. Same format as `npusim report -n`: "
         "'all', '0-2,12-14', '5'. "
-        "Defaults to the model's full-open behavior; when -g is set and "
-        "this is omitted, the auto-report falls back to core 0.",
+        "Defaults to core 0 (the model default; CORE_ENABLE_MASK is not "
+        "injected); when -g is set and this is omitted, the auto-report "
+        "also uses core 0.",
     )
     parser.add_argument(
         "-c",

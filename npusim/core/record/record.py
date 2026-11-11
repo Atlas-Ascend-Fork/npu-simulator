@@ -192,7 +192,7 @@ class CannsimRecord:
                     f"(AI cores = {self.ai_core_count}): {e}",
                 )
         else:
-            # 用户未指定：保持 model 默认（不注入 CORE_ENABLE_MASK）；
+            # 用户未指定：保持 model 默认（camodel 默认仅 core 0，不注入 CORE_ENABLE_MASK）；
             # 但 -g 触发的 auto-report 仍按历史约定默认落到核 0。
             self.resolved_cores = None
 
