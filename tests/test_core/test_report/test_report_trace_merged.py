@@ -370,6 +370,12 @@ class DiscoverChipTasksTests(unittest.TestCase):
         self.assertEqual(_extract_kernel_index("kernel_7_reports"), 7)
         self.assertEqual(_extract_kernel_index("foo_reports"), 0)
 
+    def test_extract_kernel_index_prof_demo_uses_launch_id(self):
+        # prof_demo 目录名 kernel_<launch>_<kernel_name>_reports：取 launch id，
+        # 否则同一 chip 下多个 kernel 会全部塌缩到 0 并互相覆盖产物。
+        self.assertEqual(_extract_kernel_index("kernel_0003_entry_kernel_400_reports"), 3)
+        self.assertEqual(_extract_kernel_index("kernel_0012_foo_reports"), 12)
+
     def test_extract_kernel_index_db_stem_uses_launch_id(self):
         # 契约 DB stem 命名 <launch_id>_<kernel>_reports：用前导 launch id
         # 作索引，保证同一 chip 内不同 kernel 的缓存键与产物名不冲突。
@@ -654,3 +660,67 @@ class CLIArgumentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MergeProfDemoLayoutTests(unittest.TestCase):
+    """Regression for prof_demo ``kernel_<launch>_<name>_reports`` layout.
+
+    Every kernel used to collapse to index 0, so per-kernel merged outputs
+    overwrote each other and the global trace labelled every kernel as
+    KERNEL0.
+    """
+
+    KERNEL_DIRS = (
+        "kernel_0003_entry_kernel_400_reports",
+        "kernel_0004_entry_kernel_500_reports",
+    )
+
+    @staticmethod
+    def _seed(root: Path):
+        for kernel in MergeProfDemoLayoutTests.KERNEL_DIRS:
+            core_dir = root / "chip0_result" / "results" / kernel / "core_0"
+            core_dir.mkdir(parents=True)
+            (core_dir / "trace_core0.json").write_text(json.dumps(_make_realistic_core_trace()))
+        return root / "chip0_result"
+
+    def test_discover_tasks_uses_launch_id_as_kernel_index(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            self._seed(Path(tmp))
+            tasks = discover_chip_tasks(tmp)
+            out_names = sorted(Path(task[2]).name for task in tasks)
+            self.assertEqual(out_names, ["trace_chip0_kernel3.json", "trace_chip0_kernel4.json"])
+
+    def test_merge_keeps_every_prof_demo_kernel(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            self._seed(root)
+            report_mod._merge_core_traces(root)
+
+            self.assertTrue((root / "chip0_result" / "trace_chip0_kernel3.json").exists())
+            self.assertTrue((root / "chip0_result" / "trace_chip0_kernel4.json").exists())
+            events = json.loads((root / "trace_allchips.json").read_text())["traceEvents"]
+            pids = {e["pid"] for e in events if isinstance(e.get("pid"), str)}
+            self.assertIn("CHIP0.KERNEL3.CORE0.AIC", pids)
+            self.assertIn("CHIP0.KERNEL4.CORE0.AIC", pids)
+
+
+class KernelOutputCollisionTests(unittest.TestCase):
+    """Unexportable kernel dir names must not silently overwrite each other."""
+
+    @staticmethod
+    def _seed(root: Path, names):
+        for name in names:
+            core_dir = root / "chip0_result" / "results" / name / "core_0"
+            core_dir.mkdir(parents=True)
+            (core_dir / "trace_core0.json").write_text(json.dumps(_make_realistic_core_trace()))
+
+    def test_unparsable_names_get_distinct_outputs(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            self._seed(root, ("alpha_reports", "beta_reports"))
+            tasks = discover_chip_tasks(str(root))
+            out_names = sorted(Path(task[2]).name for task in tasks)
+            self.assertEqual(len(out_names), 2)
+            self.assertEqual(len(set(out_names)), 2)
+            self.assertIn("trace_chip0_kernel0.json", out_names)
+            self.assertIn("trace_chip0_kernel0_2.json", out_names)

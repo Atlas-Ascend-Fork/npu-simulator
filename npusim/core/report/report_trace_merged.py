@@ -35,6 +35,12 @@ TRACE_FILE_RE = re.compile(r"^trace_core(\d+)(?:_(\d+))?\.json(\.gz)?$")
 _CHIP_INDEX_RE = re.compile(r"^chip(\d+)_result$")
 _KERNEL_INDEX_RE = re.compile(r"^kernel_(\d+)_reports$")
 
+# prof_demo layout: kernel_<launch>_<kernel_name>_reports (e.g.
+# kernel_0003_entry_kernel_400_reports). Without this branch the launch
+# id is lost and every kernel collapses to index 0, so per-kernel merged
+# outputs overwrite each other and global pids share one KERNEL bucket.
+_PROF_DEMO_REPORTS_RE = re.compile(r"^kernel_(\d+)_.*_reports$")
+
 # Contract-DB stem naming: <launch_id>_<kernel_name>_reports (e.g.
 # 0003_entry_kernel_20_reports). The leading launch id keeps kernel
 # indices unique within a chip.
@@ -383,18 +389,19 @@ def _extract_chip_index(chip_dir):
 def _extract_kernel_index(kernel_dir):
     """Extract the numeric kernel index from a ``*_reports`` directory name.
 
-    Handles both the legacy ``kernel_<N>_reports`` naming and the
-    contract-DB stem naming (``<launch_id>_<kernel>_reports``, e.g.
-    ``0003_entry_kernel_20_reports``); the latter is keyed by the leading
-    launch id so per-kernel merged outputs and merge_all cache keys stay
-    unique. Falls back to 0 when the name carries no usable digits.
+    Handles the legacy ``kernel_<N>_reports`` naming, the prof_demo naming
+    (``kernel_<launch_id>_<kernel_name>_reports``, e.g.
+    ``kernel_0003_entry_kernel_400_reports``) and the contract-DB stem
+    naming (``<launch_id>_<kernel>_reports``, e.g.
+    ``0003_entry_kernel_20_reports``). The launch id keeps per-kernel
+    merged outputs and merge_all cache keys unique. Falls back to 0 with a
+    warning when the name carries no usable digits.
     """
-    m = _KERNEL_INDEX_RE.match(kernel_dir)
-    if m:
-        return int(m.group(1))
-    m = _LAUNCH_ID_REPORTS_RE.match(kernel_dir)
-    if m:
-        return int(m.group(1))
+    for pattern in (_KERNEL_INDEX_RE, _PROF_DEMO_REPORTS_RE, _LAUNCH_ID_REPORTS_RE):
+        m = pattern.match(kernel_dir)
+        if m:
+            return int(m.group(1))
+    print_warn(f"cannot extract a kernel index from '{kernel_dir}'; falling back to 0")
     return 0
 
 
@@ -527,9 +534,22 @@ def _collect_tasks_for_chip(chip_dir):
         return []
     chip_idx = _extract_chip_index(chip_dir)
     tasks = []
+    used_names = {}
     for kernel_dir in kernel_dirs:
         kernel_idx = _extract_kernel_index(kernel_dir)
         out_name = f"trace_chip{chip_idx}_kernel{kernel_idx}.json"
+        if out_name in used_names:
+            stem = out_name[: -len(".json")]
+            suffix = 2
+            while f"{stem}_{suffix}.json" in used_names:
+                suffix += 1
+            renamed = f"{stem}_{suffix}.json"
+            print_warn(
+                f"kernel index collision: '{kernel_dir}' and '{used_names[out_name]}' "
+                f"both map to {out_name}; writing '{renamed}' instead"
+            )
+            out_name = renamed
+        used_names[out_name] = kernel_dir
         out_path = os.path.join(chip_dir, out_name)
         tasks.append((chip_dir, kernel_dir, out_path))
     return tasks
