@@ -94,7 +94,12 @@ class SummaryReporter:
         """)
 
         kernel_duration_per_core = {row[0]: row[1] for row in cursor}
-        durations = list(kernel_duration_per_core.values())
+        # A core whose instructions all land on the same tick has a zero span,
+        # which makes the ratio undefined. Such a core is left out instead of
+        # turning the metric into a division by zero.
+        durations = [duration for duration in kernel_duration_per_core.values() if duration > 0]
+        if not durations:
+            return 0.0
         max_dur = max(durations)
         min_dur = min(durations)
         ratio = round(max_dur / min_dur, 4)
@@ -153,7 +158,7 @@ class SummaryReporter:
             total_count = cls.get_total_scalar_instrs_count(core_type)
             load_count = cls.get_load_count(core_type)
             store_count = cls.get_store_count(core_type)
-            rat = round((load_count + store_count) / total_count, 2)
+            rat = round((load_count + store_count) / total_count, 2) if total_count else 0
             res[CoreType(core_type).name] = {
                 "total_count": total_count,
                 "load_count": load_count,
