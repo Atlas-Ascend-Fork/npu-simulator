@@ -33,7 +33,7 @@ npusim_out/
     ├── record/                                       # 仿真数据（*.db、instr.bin 等）
     └── report/
         └── results/                                  # 仿真报告目录
-            └── kernel_<NNNN>_<kernel_name>_reports/  # 每个 kernel launch 一个目录（4 位 launch 编号 + kernel 名）
+            └── <NNNN>_<kernel_name>_reports/         # 每个 kernel launch 一个目录（4 位 launch 编号 + kernel 名）
                 ├── summary.json                      # 性能分析汇总
                 ├── aicore_utilization.json           # AI Core 利用率报告
                 ├── core_<M>/trace_core<M>.json       # 指令流水图

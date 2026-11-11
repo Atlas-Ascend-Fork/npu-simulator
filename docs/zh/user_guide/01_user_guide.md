@@ -127,7 +127,7 @@ npusim report --help
     ├── npusim.log                                     # 仿真主日志
     └── report/
         └── results/
-            └── kernel_*_reports/                      # 按 kernel launch 分类，每个 kernel 一个目录
+            └── {launch_id}_{kernel_name}_reports/    # 按 kernel launch 分类，每个 kernel 一个目录（如 0000_vector_add_reports）
                 ├── aicore_utilization.json            # AI Core 利用率（Chrome Tracing JSON）
                 ├── summary.json                       # 性能分析汇总（结构化 JSON，面向 AI/工具消费）
                 ├── {db_stem}.npu-rep                   # 该 kernel 的 .npu-rep 归档（DB 表 CSV + manifest.json + 报告 JSON）
@@ -140,10 +140,12 @@ npusim report --help
 
     | 产物 | 说明 |
     | --- | --- |
-    | `kernel_*_reports/aicore_utilization.json` | AI Core 利用率报告，展示各子核心（AIC/AIV0/AIV1）的活跃区间与占用率。详见 [AI Core利用率](#ai-core-利用率报告)。 |
-    | `kernel_*_reports/summary.json` | 性能分析汇总，归一化聚合内核耗时、各流水线利用率、瓶颈诊断等维度，纯 JSON 面向 AI/工具消费。详见 [性能分析汇总](#性能分析汇总)。 |
-    | `kernel_*_reports/{db_stem}.npu-rep` | 该 kernel 的 `.npu-rep` 归档文件（DB 表 CSV、manifest.json 及报告 JSON 的打包），供外部工具（如 UI）消费；报告 JSON 保留引擎原始文件名（如 `core_0_tracing_report_0.json`）。 |
+    | `{launch_id}_{kernel_name}_reports/aicore_utilization.json` | AI Core 利用率报告，展示各子核心（AIC/AIV0/AIV1）的活跃区间与占用率。详见 [AI Core利用率](#ai-core-利用率报告)。 |
+    | `{launch_id}_{kernel_name}_reports/summary.json` | 性能分析汇总，归一化聚合内核耗时、各流水线利用率、瓶颈诊断等维度，纯 JSON 面向 AI/工具消费。详见 [性能分析汇总](#性能分析汇总)。 |
+    | `{launch_id}_{kernel_name}_reports/{db_stem}.npu-rep` | 该 kernel 的 `.npu-rep` 归档文件（DB 表 CSV、manifest.json 及报告 JSON 的打包），供外部工具（如 UI）消费；报告 JSON 保留引擎原始文件名（如 `core_0_tracing_report_0.json`）。 |
     | `core_*/trace_core*.json` | 指令流水图（标准 Chrome Tracing JSON），以指令维度展示时序关系，可用 Perfetto 或 Chrome 打开。详见 [指令流水图](#指令流水图)。 |
+
+    > 说明：默认安装使用 BiProfRunner 后端，报告目录名为 `{launch_id:04d}_{kernel_name}_reports`（如 `0000_vector_add_reports`）；当 BiProfRunner 不可用并回退到 prof_demo 后端时，目录名为 `kernel_{launch_id:04d}_{kernel_name}_reports`。
 
 
 4. 仿真结果查看

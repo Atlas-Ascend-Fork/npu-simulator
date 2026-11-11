@@ -68,7 +68,7 @@ Parallel Simulation: All threads are joined.
 
 ## 查看性能流水
 
-仿真性能流水文件在本项目`build/Samples/0_Introduction/vector_add/npusim_*/report/results/kernel_*/core_*`目录，流水相关文件为：
+仿真性能流水文件在本项目 `build/Samples/0_Introduction/vector_add/npusim_*/report/results/<launch_id>_<kernel_name>_reports/core_*` 目录（例如 `results/0000_vector_add_reports/core_0`），流水相关文件为：
 
 ```bash
 trace_core0.json
