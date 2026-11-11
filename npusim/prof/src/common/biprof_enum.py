@@ -171,10 +171,10 @@ class InstrType(Enum):
 
 
 class UbAccessType(Enum):
-    SIMT_RD = auto()
-    SIMT_WR = auto()
     SIMD_RD = auto()
     SIMD_WR = auto()
+    SIMT_RD = auto()
+    SIMT_WR = auto()
 
 
 class SubQueueType(Enum):
