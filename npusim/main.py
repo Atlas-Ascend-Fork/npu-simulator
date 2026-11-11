@@ -121,7 +121,7 @@ def _add_report_parser(subparsers):
         "-o",
         "--output",
         default=None,
-        help="Folder where the pipeline diagrams will be generated (default: same as export directory)",
+        help="Folder where the pipeline diagrams will be generated (default: <export>/report)",
     )
     parser.add_argument(
         "-n",

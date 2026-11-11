@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import argparse
 import unittest
 from unittest.mock import patch
 
@@ -101,6 +102,14 @@ class MainParserTests(unittest.TestCase):
         self.assertTrue(args.smart_pipes)
         self.assertTrue(args.merge_trace)
         self.assertEqual(args.object_file, "/tmp/app.o")
+
+    def test_report_output_help_describes_default_dir(self):
+        parser = setup_parser()
+        subparsers_action = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
+        report_parser = subparsers_action.choices["report"]
+        output_action = next(action for action in report_parser._actions if "--output" in action.option_strings)
+        self.assertIn("<export>/report", output_action.help)
+        self.assertNotIn("same as export", output_action.help)
 
     def test_report_export_required(self):
         parser = setup_parser()

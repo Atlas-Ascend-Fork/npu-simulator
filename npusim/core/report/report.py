@@ -841,7 +841,7 @@ if __name__ == "__main__":
         "-o",
         "--output",
         default=None,
-        help="Folder where reports will be generated (default: same as export directory)",
+        help="Folder where reports will be generated (default: <export>/report)",
     )
     parser.add_argument(
         "-n",
