@@ -354,8 +354,10 @@ class CannsimRecord:
         - Shell 命令（如 "python xxx", "bash ./run.sh"）：直接用 bash -c 执行，
           不需要本地文件存在，适合 Python 算子等通过解释器启动的场景。
         - 本地 ELF 二进制：直接 execve 执行，最高效。
-        - 本地脚本/非 ELF 文件（即使没有 shebang）：用 bash 执行，
-          避免用户忘记写 shebang 导致失败。
+        - 本地脚本/非 ELF 文件：按 ``bash -c <绝对路径>`` 启动，因此**要求文件带执行位**；
+          解释器由首行 ``#!`` 决定（无 shebang 时 bash 会按 shell 解析内容，所以 shell
+          脚本仍可执行，而 Python 等其它语言的脚本需自行写 shebang 或改用命令模式
+          ``"python3 xxx.py"``）。
 
         接 SIGINT：KeyboardInterrupt 时标记 self._interrupted=True，
         调用方 record() 负责打中断提示并归档已产出的部分资产。

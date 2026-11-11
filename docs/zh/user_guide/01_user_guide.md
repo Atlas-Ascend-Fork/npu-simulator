@@ -15,6 +15,10 @@ npusim --help
 
 基于仿真运行目标程序，采集数据，目标程序可以是可执行文件、shell脚本、python脚本等。
 
+> **注意**：以本地文件形式传脚本时（如 `npusim record ./run.sh`），脚本需带执行位且首行带
+> `#!`（如 `#!/usr/bin/env python3`）。未加执行位或无 shebang 的 python 脚本请改用命令模式：
+> `npusim record "python3 train.py"`。
+
 **命令格式**：
 - npusim record [options] {user_app}
 
