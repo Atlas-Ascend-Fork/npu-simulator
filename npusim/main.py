@@ -29,7 +29,7 @@ from npusim.core.record.config import (
     preprocess_gen_report_argv,
 )
 from npusim.core.report import report
-from npusim.core.public.comm import welcome
+from npusim.core.public.comm import print_warn, welcome
 
 
 def _add_record_parser(subparsers):
@@ -188,11 +188,16 @@ def handle_record_command(args, parser):
             offending.append("-s/--soc-version")
         if offending:
             parser.error(f"argument(s) not allowed with -c/--case-dir: {', '.join(offending)}")
+        if args.chip:
+            print_warn("--chip is ignored with -c/--case-dir; ktest topology comes from the case top.json")
+        if args.user_option:
+            print_warn("-u/--user-option is ignored with -c/--case-dir")
         cfg = KtestConfig(
             case_dir=Path(args.case_dir),
             output=Path(args.output),
             gen_report=normalize_gen_report(args.gen_report),
             model=normalize_sim_mode(args.sim_mode),
+            core_id=args.core_id or "",
         )
         return 0 if ktest(cfg) else 1
 

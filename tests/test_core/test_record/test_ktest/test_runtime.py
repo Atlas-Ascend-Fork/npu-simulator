@@ -88,6 +88,32 @@ class KtestBuildEnvTests(unittest.TestCase):
                 env = build_execution_env({"ASCEND_TOOLKIT_HOME": str(root)}, camodel_dir, record_dir)
             self.assertEqual(env["CANNSIM_ARCH"], "Ascend950")
 
+    def test_build_env_injects_core_enable_mask(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            helper = root / "libcannsim_helper.so"
+            helper.write_text("", encoding="utf-8")
+            camodel_dir = root / "camodel"
+            camodel_dir.mkdir()
+            record_dir = root / "record"
+            record_dir.mkdir()
+            with patch.object(_ktest_runtime_mod, "_find_helper_lib", return_value=helper):
+                env = build_execution_env({}, camodel_dir, record_dir, resolved_cores=(0, 2))
+            self.assertEqual(env["CORE_ENABLE_MASK"], "0x5")
+
+    def test_build_env_no_mask_without_core_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            helper = root / "libcannsim_helper.so"
+            helper.write_text("", encoding="utf-8")
+            camodel_dir = root / "camodel"
+            camodel_dir.mkdir()
+            record_dir = root / "record"
+            record_dir.mkdir()
+            with patch.object(_ktest_runtime_mod, "_find_helper_lib", return_value=helper):
+                env = build_execution_env({}, camodel_dir, record_dir)
+            self.assertNotIn("CORE_ENABLE_MASK", env)
+
     def test_build_env_missing_helper_raises(self):
         from npusim.core.record.paths import RecordPathError
 

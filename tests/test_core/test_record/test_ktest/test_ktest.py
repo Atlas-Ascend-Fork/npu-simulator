@@ -64,6 +64,19 @@ class CannsimKtestStage1Tests(unittest.TestCase):
             self.assertTrue(kt.stage1_preflight())
             self.assertEqual(kt.runtime_config, "1p")
 
+    def test_stage1_core_id_resolved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = _make_case_dir(tmp, chips=1)
+            kt = CannsimKtest(KtestConfig(case_dir=str(case_dir), core_id="0-1"))
+            self.assertTrue(kt.stage1_preflight())
+            self.assertEqual(kt.resolved_cores, (0, 1))
+
+    def test_stage1_invalid_core_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = _make_case_dir(tmp, chips=1)
+            kt = CannsimKtest(KtestConfig(case_dir=str(case_dir), core_id="99"))
+            self.assertFalse(kt.stage1_preflight())
+
     def test_stage1_valid_2p(self):
         with tempfile.TemporaryDirectory() as tmp:
             case_dir = _make_case_dir(tmp, chips=2)
@@ -207,6 +220,23 @@ class KtestOrchestrationTests(unittest.TestCase):
                 ok = ktest(cfg)
             self.assertTrue(ok)
             m_gr.assert_called_once()
+
+    @patch.object(_ktest_mod, "print_start_banner")
+    @patch.object(_ktest_mod, "print_record_summary")
+    @patch.object(_ktest_mod, "release_camodel_lock")
+    def test_ktest_gen_report_uses_core_id(self, m_lock, m_sum, m_banner):
+        cfg = KtestConfig(case_dir="/tmp/case", gen_report="vf", core_id="0-1")
+        with patch.object(_ktest_mod, "generate_auto_report") as m_gr:
+            executor = CannsimKtest(cfg)
+            executor.paths = MagicMock()
+            executor.paths.case_symlink = Path("/tmp/camodel/case")
+            executor.record_dir = Path("/tmp/out/record")
+            executor.target_dir = Path("/tmp/out/target")
+            executor._lock_fp = None
+            with patch.object(CannsimKtest, "run", return_value=True):
+                ok = ktest(cfg)
+            self.assertTrue(ok)
+            self.assertEqual(m_gr.call_args.kwargs["core_id"], "0-1")
 
 
 if __name__ == "__main__":

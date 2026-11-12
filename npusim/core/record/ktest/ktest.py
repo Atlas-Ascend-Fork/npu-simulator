@@ -40,6 +40,7 @@ from npusim.core.record.ktest.config import KtestConfig
 from npusim.core.record.ktest.paths import KtestPathError, resolve_ktest_paths
 from npusim.core.record.paths import RecordPathError
 from npusim.core.record.ktest.runtime import (
+    KTEST_SOC_VERSION,
     acquire_camodel_lock,
     build_execution_env,
     create_case_symlink,
@@ -50,6 +51,7 @@ from npusim.core.record.ktest.runtime import (
     remove_case_symlink,
     resolve_config_template,
 )
+from npusim.core.public.soc_info import get_ai_core_count, parse_core_id
 
 
 class CannsimKtest:
@@ -70,6 +72,7 @@ class CannsimKtest:
         self.model = cfg.model
         self.config_template: Optional[Path] = None
         self.runtime_config: str = ""
+        self.resolved_cores: Optional[tuple] = None
         self.paths = None
         self.target_dir: Optional[Path] = None
         self.record_dir: Optional[Path] = None
@@ -108,9 +111,25 @@ class CannsimKtest:
         except ValueError as e:
             return self._stage_fail(1, str(e))
 
+        if self.cfg.core_id:
+            try:
+                self.resolved_cores = parse_core_id(
+                    self.cfg.core_id,
+                    get_ai_core_count(KTEST_SOC_VERSION),
+                )
+            except ValueError as e:
+                return self._stage_fail(
+                    1,
+                    f"Invalid --core-id '{self.cfg.core_id}' for {KTEST_SOC_VERSION}: {e}",
+                )
+
         params["runtime-config"] = self.runtime_config
+        if self.resolved_cores is not None:
+            params["core-id"] = self.cfg.core_id
 
         extra = f"case={self.case_dir.name} topology={self.runtime_config}"
+        if self.resolved_cores is not None:
+            extra += f" core-id={self.cfg.core_id}"
         self._stage_ok(1, "Preflight", extra=extra)
         return True
 
@@ -172,6 +191,7 @@ class CannsimKtest:
                     self.record_dir,
                     self.config_template,
                     model=self.model,
+                    resolved_cores=self.resolved_cores,
                 )
             except RecordPathError as e:
                 print_error(str(e))
@@ -183,6 +203,7 @@ class CannsimKtest:
             print()
             print(f"  cmd             {cmdline}")
             print(f"  cwd             {self.paths.camodel_path}")
+            print(f"  core-id         {self.cfg.core_id or '(default, model full-open)'}")
             print(f"  case symlink    {self.paths.case_symlink} -> {self.case_dir}")
             if self.config_template is not None:
                 print(f"  CAMODEL_CONFIG_PATH -> {self.config_template} ({self.runtime_config})")
@@ -285,7 +306,7 @@ def ktest(cfg: KtestConfig) -> bool:
                 record_dir=executor.record_dir,
                 target_dir=executor.target_dir,
                 gen_report=cfg.gen_report,
-                core_id="all",
+                core_id=cfg.core_id or "all",
                 object_file="",
             )
         return success

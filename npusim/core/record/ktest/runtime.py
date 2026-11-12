@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from npusim.core.public.comm import print_error, print_info, print_warn
-
+from npusim.core.public.soc_info import cores_to_mask
 from npusim.core.record.paths import RecordPathError
 from npusim.core.record.runtime import (
     _find_cannsim_helper_lib as _find_helper_lib,
@@ -212,6 +212,7 @@ def remove_case_symlink(case_symlink: Path) -> None:
 
 
 _KTEST_SOC_VERSION = "Ascend950"
+KTEST_SOC_VERSION = _KTEST_SOC_VERSION
 _HELPER_LIB_NAME = "libcannsim_helper.so"
 
 
@@ -221,6 +222,7 @@ def build_execution_env(
     record_dir: Path,
     config_template: Optional[Path] = None,
     model: str = "CA",
+    resolved_cores: Optional[tuple] = None,
 ) -> dict:
     """构建 sim 子进程环境变量。
 
@@ -235,7 +237,8 @@ def build_execution_env(
       ``chip{N}/{kernel}.db`` 子目录，0.7.x 为平铺 ``chip{N}.db``）。
     - 不设 ``CAMODEL_LOG_PATH`` / ``STARS_LOG_PATH``：log_ca 落在 camodel_path 下，
       跑完后随其它产物一起搬到 target_dir。
-    - 不设 ``CORE_ENABLE_MASK`` / ``TASK_QUEUE_ENABLE``。
+    - 仅当 ``resolved_cores`` 非空（``-n`` 指定）时注入 ``CORE_ENABLE_MASK``；
+      未指定时保持模型默认（不注入）。不设 ``TASK_QUEUE_ENABLE``。
 
     Args:
         base_env: 基础环境变量（通常为 ``os.environ`` 的 copy）。
@@ -243,11 +246,14 @@ def build_execution_env(
         record_dir: 归档目录，helper DB 和日志写到这里。
         config_template: 可选的 camodel 配置模板路径。
         model: 仿真模型类型，``CA``（精确计时）或 ``PV``（功能验证）。
+        resolved_cores: ``-n/--core-id`` 解析后的 AI core 索引；None 表示保持模型默认。
 
     Raises:
         RecordPathError: 找不到 ``libcannsim_helper.so``。
     """
     env = base_env.copy()
+    if resolved_cores:
+        env["CORE_ENABLE_MASK"] = f"0x{cores_to_mask(resolved_cores):x}"
     existing_ld = env.get("LD_LIBRARY_PATH", "")
     env["LD_LIBRARY_PATH"] = f"{camodel_path}:{existing_ld}" if existing_ld else str(camodel_path)
 

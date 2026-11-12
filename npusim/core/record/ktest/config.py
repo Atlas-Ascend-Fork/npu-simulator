@@ -28,3 +28,4 @@ class KtestConfig:
     output: Path = Path(".")
     gen_report: str = ""
     model: str = "CA"
+    core_id: str = ""

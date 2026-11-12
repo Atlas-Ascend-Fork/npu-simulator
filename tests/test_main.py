@@ -132,6 +132,22 @@ class HandleRecordCommandTests(unittest.TestCase):
             rc = handle_record_command(args, setup_parser())
         self.assertEqual(rc, 1)
 
+    def test_ktest_warns_for_ignored_chip_and_user_option(self):
+        args = _parse(["record", "-c", "/cases/x", "--chip", "4", "-u", "foo"])
+        with patch("npusim.main.ktest", return_value=True), patch("npusim.main.print_warn") as m_warn:
+            rc = handle_record_command(args, setup_parser())
+        self.assertEqual(rc, 0)
+        messages = [call.args[0] for call in m_warn.call_args_list]
+        self.assertTrue(any("--chip is ignored" in m for m in messages))
+        self.assertTrue(any("-u/--user-option is ignored" in m for m in messages))
+
+    def test_ktest_passes_core_id(self):
+        args = _parse(["record", "-c", "/cases/x", "-n", "0-1"])
+        with patch("npusim.main.ktest", return_value=True) as m_ktest:
+            handle_record_command(args, setup_parser())
+        cfg = m_ktest.call_args.args[0]
+        self.assertEqual(cfg.core_id, "0-1")
+
     def test_ktest_with_user_app_rejected(self):
         args = _parse(["record", "app", "-c", "/cases/x"])
         with self.assertRaises(BaseException) as cm:
