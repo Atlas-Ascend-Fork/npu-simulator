@@ -58,7 +58,6 @@ from npusim.core.record.runner import run_user_app_with_dashboard
 from npusim.core.record.runtime import (
     CAMODEL_ASSETS as RECORD_CAMODEL_ASSETS,
     CC_MAX_CHIP,
-    RUNTIME_DIRS as RECORD_RUNTIME_DIRS,
     build_execution_env,
     cc_chip_of,
     cc_restore_hccl,
@@ -84,9 +83,6 @@ class CannsimRecord:
     # instr 类产物（instr.bin / chip*_instr.bin）不受 env 控制，仍落在子进程 cwd，
     # 由 archive_instr_bin_glob 按后缀 glob 搬运，覆盖单 chip 和多 chip 场景。
     CAMODEL_ASSETS: tuple = RECORD_CAMODEL_ASSETS
-
-    # 运行时需要在 target_dir 下创建的子目录
-    RUNTIME_DIRS: tuple = RECORD_RUNTIME_DIRS
 
     def __init__(self, cfg: RecordConfig):
         self.launch = build_launch_spec(cfg.user_app, cfg.user_option, Path.cwd())
@@ -330,11 +326,12 @@ class CannsimRecord:
 
         模型当前的产物分布：
 
-        - ``log/`` / ``log/ub_log/`` / ``run_log/``：模型直接往子进程 ``cwd`` 下的同名
-          目录写，目录必须预先存在。这部分仍建在 ``app_cwd``，运行结束后由
-          ``archive_assets`` 搬到 ``target_dir``。
         - ``log_ca/``：通过 ``CAMODEL_LOG_PATH`` / ``STARS_LOG_PATH`` 重定向到
-          ``target_dir/log_ca``，无需事后搬运，但模型同样不会自己 mkdir，所以提前建好。
+          ``target_dir/log_ca``，无需事后搬运，但模型不会自己 mkdir，所以提前建好。
+        - ``log/`` / ``log/ub_log/`` / ``run_log/``：Ascend950 模型既不再写入、也不会
+          自己重建（实测删除后仿真照常跑完并产出 DB），因此**不再**在子进程 ``cwd``
+          里预建，也不再把它们搬进 ``record_dir`` 或删除 —— 这三条动作会误伤用户
+          工作目录下本就存在的同名目录。
         - ``instr.bin`` / ``chip*_instr.bin``：不受 env 控制，仍落在子进程 ``cwd``，
           运行结束后由 ``archive_instr_bin_glob`` 按后缀 glob 从 ``asset_roots`` 候选
           搬到 ``record_dir``，覆盖单 chip 和多 chip 产物。

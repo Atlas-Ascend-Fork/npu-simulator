@@ -29,15 +29,10 @@ from npusim.core.public.soc_info import cores_to_mask
 from npusim.core.record.paths import RecordPathError
 
 
-# instr 类产物改由 archive_instr_bin_glob 按后缀 glob 匹配（*instr.bin），
-# 统一覆盖 instr.bin / chip*_instr.bin 等多卡产物。
-CAMODEL_ASSETS = (
-    "log",
-    "run_log",
-    "stars_log*_task.dump",
-)
-
-RUNTIME_DIRS = ("log", "log/ub_log", "run_log")
+# 模型落在子进程 cwd 下、且不能被 env 重定向的产物。
+# Ascend950 模型不再使用 cwd 下的 log/ log/ub_log/ run_log（既不写入也不重建），
+# 因此它们既不在用户工作目录里预建，也不参与搬运/删除 —— 避免误伤用户同名目录。
+CAMODEL_ASSETS = ("stars_log*_task.dump",)
 
 _HELPER_LIB_NAME = "libcannsim_helper.so"
 _REPORT_ARCH_BY_SOC = {
@@ -47,16 +42,14 @@ _REPORT_ARCH_BY_SOC = {
 
 
 def prepare_runtime_dirs(app_cwd: Path, target_dir: Path) -> bool:
-    app_cwd = Path(app_cwd).resolve()
-    target_dir = Path(target_dir).resolve()
+    """预建仿真模型需要的运行时目录。
 
-    for rel_dir in RUNTIME_DIRS:
-        full_path = app_cwd / rel_dir
-        try:
-            full_path.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            print_error(f"Failed to create directory {full_path}: {e}")
-            return False
+    只在工具自己的输出目录下建 ``record/log_ca``（``CAMODEL_LOG_PATH`` /
+    ``STARS_LOG_PATH`` 的目标）。``app_cwd`` 里不再创建任何目录：Ascend950 模型
+    不再往 ``cwd`` 的 ``log/`` / ``log/ub_log/`` / ``run_log/`` 写内容，也就不该
+    为它造目录（造了反而可能与用户同名目录冲突，并在事后搬运时误删）。
+    """
+    target_dir = Path(target_dir).resolve()
 
     log_ca_dir = target_dir / "record" / "log_ca"
     try:
@@ -65,9 +58,7 @@ def prepare_runtime_dirs(app_cwd: Path, target_dir: Path) -> bool:
         print_error(f"Failed to create log_ca directory {log_ca_dir}: {e}")
         return False
 
-    folders = ", ".join(RUNTIME_DIRS)
-    print_info(f"Runtime dirs ready: {folders} under {app_cwd}")
-    print_info(f"log_ca under {target_dir}/record")
+    print_info(f"Runtime dir ready: log_ca under {target_dir}/record")
     return True
 
 

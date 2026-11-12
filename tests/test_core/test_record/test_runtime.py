@@ -89,5 +89,37 @@ class RecordRuntimeTests(unittest.TestCase):
             self.assertEqual(env["TASK_QUEUE_ENABLE"], "0")
 
 
+class RuntimeDirsTests(unittest.TestCase):
+    def test_prepare_runtime_dirs_leaves_user_cwd_untouched(self):
+        """回归 #29：不得在用户工作目录下创建 log/ run_log/（会被事后搬走并删除）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app_cwd = root / "work"
+            app_cwd.mkdir()
+            target_dir = root / "out"
+
+            self.assertTrue(runtime_mod.prepare_runtime_dirs(app_cwd, target_dir))
+            self.assertEqual(list(app_cwd.iterdir()), [])
+            self.assertTrue((target_dir / "record" / "log_ca").is_dir())
+
+    def test_prepare_runtime_dirs_keeps_existing_user_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app_cwd = root / "work"
+            (app_cwd / "log").mkdir(parents=True)
+            (app_cwd / "log" / "mine.txt").write_text("mine", encoding="utf-8")
+            (app_cwd / "run_log").mkdir()
+
+            self.assertTrue(runtime_mod.prepare_runtime_dirs(app_cwd, root / "out"))
+            self.assertTrue((app_cwd / "log" / "mine.txt").is_file())
+            self.assertFalse((app_cwd / "log" / "ub_log").exists())
+            self.assertEqual(list((app_cwd / "run_log").iterdir()), [])
+
+    def test_camodel_assets_do_not_include_user_cwd_dirs(self):
+        self.assertNotIn("log", runtime_mod.CAMODEL_ASSETS)
+        self.assertNotIn("run_log", runtime_mod.CAMODEL_ASSETS)
+        self.assertIn("stars_log*_task.dump", runtime_mod.CAMODEL_ASSETS)
+
+
 if __name__ == "__main__":
     unittest.main()
