@@ -59,6 +59,31 @@ class ArchiveHelperDbsTests(unittest.TestCase):
 
 
 class ArtifactsArchiveTests(unittest.TestCase):
+    def test_duplicate_asset_names_keep_the_first_root(self):
+        cases = [
+            (
+                "fallback",
+                "stars_log0_task.dump",
+                lambda target, roots: artifacts.archive_assets(target, ["stars_log*_task.dump"], roots),
+            ),
+            ("instr", "core0_instr.bin", artifacts.archive_instr_bin_glob),
+            ("chip_db", "chip0.db", artifacts.archive_helper_dbs),
+        ]
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            for name, filename, archive in cases:
+                with self.subTest(name=name):
+                    root = Path(tmp) / name
+                    first, second, target = (root / part for part in ("first", "second", "target"))
+                    for directory in (first, second, target):
+                        directory.mkdir(parents=True)
+                    (first / filename).write_text("first", encoding="utf-8")
+                    (second / filename).write_text("second", encoding="utf-8")
+
+                    self.assertTrue(archive(target, [first, second]))
+                    self.assertEqual((target / filename).read_text(encoding="utf-8"), "first")
+                    self.assertFalse((first / filename).exists())
+                    self.assertEqual((second / filename).read_text(encoding="utf-8"), "second")
+
     def test_archive_instr_bin_glob_moves_files(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)

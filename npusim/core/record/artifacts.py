@@ -72,15 +72,17 @@ def archive_assets(
         if is_glob:
             resolved: List[Path] = []
             seen_matches: set = set()
+            seen_names: set = set()
             for root in normalized_roots:
                 for match in sorted(root.glob(asset_name)):
                     try:
                         match_abs = match.resolve()
                     except Exception:
                         continue
-                    if match_abs in seen_matches:
+                    if match_abs in seen_matches or (has_target and match.name in seen_names):
                         continue
                     seen_matches.add(match_abs)
+                    seen_names.add(match.name)
                     resolved.append(match)
             asset_paths = resolved
         else:
@@ -176,10 +178,12 @@ def archive_instr_bin_glob(
 
     overall_ok = True
     moved = 0
+    seen_names = set()
     for root in normalized_roots:
         for src in root.glob(f"*{suffix}"):
-            if not src.is_file():
+            if not src.is_file() or src.name in seen_names:
                 continue
+            seen_names.add(src.name)
             dst = target / src.name
             try:
                 if dst.exists():
@@ -242,10 +246,12 @@ def archive_helper_dbs(
 
     overall_ok = True
     moved = 0
+    seen_names = set()
     for root in normalized_roots:
         for src in root.glob(CHIP_DB_PATTERN):
-            if not src.is_file():
+            if not src.is_file() or src.name in seen_names:
                 continue
+            seen_names.add(src.name)
             dst = target / src.name
             try:
                 if dst.exists():
