@@ -76,6 +76,10 @@ class RecordInstruction:
     # issue-pipe attribution; file points at the source record DB (evidence location).
     queue_type: str = ""
     file: str = ""
+    ffts_mode: int = -1
+    buf_id: int = -1
+    buf_mode: int = -1
+    buf_cnt: int = -1
 
 
 def _core_type_to_ids(core_id: int, core_type_id: int) -> Tuple[int, int]:
@@ -180,6 +184,14 @@ def has_record_db_table_with_column(input_dir: Path, table: str, column: str) ->
     return False
 
 
+def _optional_int(value) -> int:
+    """Convert an optional ExtendParams value to int, using -1 when absent/invalid."""
+    try:
+        return int(value) if value is not None else -1
+    except (TypeError, ValueError):
+        return -1
+
+
 def _record_sync_semantics(raw: Optional[str]) -> Tuple[int, str, str]:
     """Extract sync semantics from ExtendParams JSON, falling back to conservative values."""
     try:
@@ -255,6 +267,10 @@ def _parse_record_instruction(
         flag_id, target_pipe, consumer_pipe = _record_sync_semantics(raw_params)
         # queue_type is the issue-queue name in ExtendParams.
         queue_type = str(extend_params.get("queue_type") or "").upper()
+        ffts_mode = _optional_int(extend_params.get("ffts_mode"))
+        buf_id = _optional_int(extend_params.get("buf_id"))
+        buf_mode = _optional_int(extend_params.get("buf_mode"))
+        buf_cnt = _optional_int(extend_params.get("buf_cnt"))
         # is_sync is true if the DB flags it, the op is a known sync instruction, or
         # sync_kind is present. The DB writes "is_sync":0 for BAR (it runs on the FC
         # queue rather than being a sync of its own), so an explicit 0 must not
@@ -278,6 +294,10 @@ def _parse_record_instruction(
             consumer_pipe=consumer_pipe,
             queue_type=queue_type,
             file=str(db_path),
+            ffts_mode=ffts_mode,
+            buf_id=buf_id,
+            buf_mode=buf_mode,
+            buf_cnt=buf_cnt,
         )
     except (TypeError, ValueError) as exc:
         logger.warning("Invalid instruction row ExecInstrId=%s in %s: %s", exec_instr_id, db_path, exc)

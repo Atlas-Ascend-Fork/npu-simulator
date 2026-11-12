@@ -35,10 +35,10 @@ Rules:
   5.  SYNCALL_COUNT_MISMATCH   - SyncAll() call counts differ across cores (deadlock risk)
 
   FFTS cross-core sync mode dispatch:
-  SET_CROSS_CORE -> MODE0 (network-wide broadcast to cores of the same kind)
+  SET_CROSS_CORE mode comes from ExtendParams.ffts_mode (fallback MODE0)
   SET_INTRA_BLOCK -> MODE4 (two execution-core kinds in a block wait for each other)
 
-  mode is inferred from the op:
+  fallback mode when the DB has no ffts_mode:
     SET_CROSS_CORE/WAIT_FLAG_DEV → mode=0
     SET/WAIT_INTRA_BLOCK → mode=4
 
@@ -60,6 +60,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
 from npusim.core.report.detections.instr_log_parser import (
@@ -139,6 +140,9 @@ class SyncEvent:
     src_core: str = ""
     dst_core: str = ""
     mix_id: int = -1
+    buf_id: int = -1
+    buf_mode: int = -1
+    buf_cnt: int = -1
 
 
 def core_kind(core_name: str) -> str:
@@ -153,9 +157,9 @@ def core_kind(core_name: str) -> str:
 
 
 def _infer_ffts_mode(op: str) -> int:
-    """Infer the FFTS sync mode from the instruction type.
+    """Infer the FFTS sync mode when ExtendParams has no ffts_mode.
 
-    SET_CROSS_CORE / WAIT_FLAG_DEV / WAIT_FLAG_DEVI are MODE0;
+    SET_CROSS_CORE / WAIT_FLAG_DEV / WAIT_FLAG_DEVI fall back to MODE0;
     SET/WAIT_INTRA_BLOCK are MODE4; other instructions return -1.
     """
     if op in ("SET_CROSS_CORE", "WAIT_FLAG_DEV", "WAIT_FLAG_DEVI"):
@@ -176,10 +180,13 @@ def _record_instruction_to_sync_event(record: RecordInstruction) -> SyncEvent:
         pipe=record.target_pipe,
         trig_pipe=record.consumer_pipe,
         flag_id=record.flag_id,
-        file="",
+        file=record.file,
         line_no=0,
         raw=f"ExecInstrId={record.instr_id} op={record.op} tick={record.tick}",
-        ffts_mode=_infer_ffts_mode(record.op),
+        ffts_mode=record.ffts_mode if record.ffts_mode >= 0 else _infer_ffts_mode(record.op),
+        buf_id=record.buf_id,
+        buf_mode=record.buf_mode,
+        buf_cnt=record.buf_cnt,
     )
 
 
@@ -218,6 +225,7 @@ def _record_instruction_to_instr_event(record: RecordInstruction) -> InstrEvent:
         pipe=record.target_pipe,
         trig_pipe=record.consumer_pipe,
         flag_id=record.flag_id,
+        file=record.file,
         raw=f"ExecInstrId={record.instr_id} op={record.op} tick={record.tick}",
     )
 
@@ -277,6 +285,9 @@ class BufSlotState:
 
     consumed: int = 0  # number of consumed GET_BUF operations
     rls_queue: List = field(default_factory=list)  # FIFO queue of RLS_BUF events
+    token_mode: bool = False  # DB carries buf_id/buf_mode/buf_cnt for exact matching
+    release_tokens: Dict[Tuple[int, int], int] = field(default_factory=dict)  # (buf_id, cnt) -> free releases
+    implicit_used: set = field(default_factory=set)  # (buf_id, cnt) slots that used the implicit buffer
 
 
 @dataclass
@@ -578,8 +589,8 @@ class CrossCoreSyncContainer:
 @dataclass
 class KernelScope:
     kernel_id: str = "unknown"
-    event_pools: Dict[Tuple[str, str, int], EventPoolState] = field(default_factory=dict)
-    cross_core: Dict[Tuple[str, int], CrossCoreState] = field(default_factory=dict)
+    event_pools: Dict[Tuple[str, str, str, int], EventPoolState] = field(default_factory=dict)
+    cross_core: Dict[int, CrossCoreState] = field(default_factory=dict)
     # buf stall detection state, keyed by (core, buf_id).
     buf_stall: Dict[Tuple[str, int], BufSlotState] = field(default_factory=dict)
     block_sync: Dict[int, BlockSyncState] = field(default_factory=dict)
@@ -725,7 +736,7 @@ class SetFlagRule(SyncRule):
     ops = ("SET_FLAG", "SET_FLAGI", "HSET_FLAG")
 
     def check(self, kernel, ev):
-        k = (ev.pipe, ev.trig_pipe, ev.flag_id)
+        k = (ev.core, ev.pipe, ev.trig_pipe, ev.flag_id)
         pool = kernel.event_pools.setdefault(k, EventPoolState())
         hits = []
         if pool.set_count - pool.wait_count > 0:
@@ -748,7 +759,7 @@ class WaitFlagRule(SyncRule):
     ops = ("WAIT_FLAG", "WAIT_FLAGI", "HWAIT_FLAG")
 
     def check(self, kernel, ev):
-        k = (ev.pipe, ev.trig_pipe, ev.flag_id)
+        k = (ev.core, ev.pipe, ev.trig_pipe, ev.flag_id)
         pool = kernel.event_pools.setdefault(k, EventPoolState())
         hits = []
         if pool.set_count == 0:
@@ -777,10 +788,13 @@ class SetCrossCoreRule(SyncRule):
     ops = ("SET_CROSS_CORE",)
 
     def check(self, kernel, ev):
-        """Pair SET_CROSS_CORE as a MODE0 network-wide broadcast."""
-        kernel.ffts_container.set_block_sync_info(ev.flag_id, FftsSyncMode.MODE0, ev.core, ev, ev.vec_sub_block_dim)
+        """Pair SET_CROSS_CORE using the mode recorded in ExtendParams (MODE0 fallback)."""
+        mode = ev.ffts_mode if ev.ffts_mode >= 0 else FftsSyncMode.MODE0
+        kernel.ffts_container.set_block_sync_info(ev.flag_id, mode, ev.core, ev, ev.vec_sub_block_dim)
         # Keep the cross_core counter for UNCONSUMED_CROSS_CORE compatibility.
-        cc = kernel.cross_core.setdefault((ev.core, ev.flag_id), CrossCoreState())
+        # The counter is per flag_id (not per core): a broadcast SET is consumed by
+        # WAIT_FLAG_DEV on another core, so per-core counters would leak.
+        cc = kernel.cross_core.setdefault(ev.flag_id, CrossCoreState())
         cc.set_count += 1
         cc.counter += 1
         return []
@@ -790,8 +804,8 @@ class WaitFlagDevRule(SyncRule):
     ops = ("WAIT_FLAG_DEV", "WAIT_FLAG_DEVI")
 
     def check(self, kernel, ev):
-        """WAIT_FLAG_DEV consumes one MODE0 signal from waitVec."""
-        cc = kernel.cross_core.setdefault((ev.core, ev.flag_id), CrossCoreState())
+        """WAIT_FLAG_DEV consumes one cross-core signal from waitVec."""
+        cc = kernel.cross_core.setdefault(ev.flag_id, CrossCoreState())
         hits = []
         set_ev = kernel.ffts_container.get_block_sync_info(ev.flag_id, ev.core)
         if set_ev is None and cc.counter <= 0:
@@ -810,19 +824,42 @@ class GetBufRule(SyncRule):
 
     def check(self, kernel, ev):
         hits = []
+        buf_id = ev.buf_id if ev.buf_id >= 0 else ev.flag_id
         # BUF_ID_OOB precheck
-        if ev.flag_id >= MAX_BUF_ID:
-            hits.append(_sync_violation("BUF_ID_OOB", kernel.kernel_id, ev, f"buf_id={ev.flag_id} >= {MAX_BUF_ID}"))
+        if buf_id >= MAX_BUF_ID:
+            hits.append(_sync_violation("BUF_ID_OOB", kernel.kernel_id, ev, f"buf_id={buf_id} >= {MAX_BUF_ID}"))
 
-        # ---- stall detection ----
-        # key = (core, buf_id), available = rls_queue.size() + 1 (one implicit initial buffer)
-        # consumed = number of consumed GET_BUF operations.
-        # GET_BUF can proceed only while a free buffer exists: consumed + 1 <= available.
-        # Note: the DB-derived rls_count is the total RLS_BUF count for (core, buf_id),
-        # not the per-GET rlsCount immediate, so it cannot be compared against the
-        # current queue length.
-        stall_key = (ev.core, ev.flag_id)
+        stall_key = (ev.core, buf_id)
         stall_bs = kernel.buf_stall.setdefault(stall_key, BufSlotState())
+
+        if ev.buf_id >= 0 and ev.buf_mode >= 0 and ev.buf_cnt >= 0:
+            # contract-v7 carries buf_id/buf_mode/buf_cnt. Match an acquire against
+            # the release with the same (buf_id, count-1) on the same core:
+            #   - buf_mode == 1 means the acquire is non-blocking
+            #   - buf_cnt < 1 means no buffer is held, so nothing can stall
+            #   - one implicit buffer per slot is allowed for the first acquisition
+            stall_bs.token_mode = True
+            if ev.buf_mode == 1 or ev.buf_cnt < 1:
+                return hits
+            key = (ev.buf_id, ev.buf_cnt - 1)
+            if stall_bs.release_tokens.get(key, 0) > 0:
+                stall_bs.release_tokens[key] -= 1
+            elif key not in stall_bs.implicit_used:
+                stall_bs.implicit_used.add(key)
+            else:
+                hits.append(
+                    _sync_violation(
+                        "BUF_STALL",
+                        kernel.kernel_id,
+                        ev,
+                        f"buf_id={ev.buf_id} cnt={ev.buf_cnt} mode={ev.buf_mode} GET_BUF has no "
+                        f"matching RLS_BUF (buf_id={ev.buf_id}, cnt={ev.buf_cnt - 1})",
+                    )
+                )
+            stall_bs.consumed += 1
+            return hits
+
+        # Fallback for DBs without buf_id/buf_cnt: count queued releases.
         available = len(stall_bs.rls_queue) + 1  # one implicit initial buffer
         consumed = stall_bs.consumed
 
@@ -832,7 +869,7 @@ class GetBufRule(SyncRule):
                     "BUF_STALL",
                     kernel.kernel_id,
                     ev,
-                    f"buf_id={ev.flag_id} GET_BUF has no free buffer "
+                    f"buf_id={buf_id} GET_BUF has no free buffer "
                     f"(consumed={consumed}, available={available}); "
                     f"consecutive GET_BUF without interleaved RLS_BUF will stall",
                 )
@@ -847,9 +884,16 @@ class RlsBufRule(SyncRule):
 
     def check(self, kernel, ev):
         hits = []
-        # RLS_BUF events enter the FIFO queue.
-        stall_key = (ev.core, ev.flag_id)
+        buf_id = ev.buf_id if ev.buf_id >= 0 else ev.flag_id
+        stall_key = (ev.core, buf_id)
         stall_bs = kernel.buf_stall.setdefault(stall_key, BufSlotState())
+        if ev.buf_id >= 0 and ev.buf_mode >= 0 and ev.buf_cnt >= 0:
+            stall_bs.token_mode = True
+            key = (ev.buf_id, ev.buf_cnt)
+            stall_bs.release_tokens[key] = stall_bs.release_tokens.get(key, 0) + 1
+            return hits
+
+        # Fallback: RLS_BUF events enter the FIFO queue.
         stall_bs.rls_queue.append(ev)
 
         return hits
@@ -951,27 +995,30 @@ def _detect_unconsumed_pools(kernel: KernelScope) -> List[Violation]:
             _kernel_end_violation(
                 kernel,
                 "UNCONSUMED_ARRIVE",
-                flag_id=key[2],
-                pipe=key[0],
-                trig_pipe=key[1],
-                detail=f"unconsumed={pool.set_count - pool.wait_count}, set={pool.set_count} wait={pool.wait_count}",
+                flag_id=key[3],
+                pipe=key[1],
+                trig_pipe=key[2],
+                detail=(
+                    f"core={key[0]} unconsumed={pool.set_count - pool.wait_count}, "
+                    f"set={pool.set_count} wait={pool.wait_count}"
+                ),
             )
         )
     return hits
 
 
 def _detect_unconsumed_cross_core(kernel: KernelScope) -> List[Violation]:
-    """Report MODE0 cross-core SET counters that were not consumed by WAIT."""
+    """Report cross-core SET counters that were not consumed by WAIT."""
     hits = []
-    for key, cross_core in kernel.cross_core.items():
+    for flag_id, cross_core in kernel.cross_core.items():
         if cross_core.counter <= 0:
             continue
         hits.append(
             _kernel_end_violation(
                 kernel,
                 "UNCONSUMED_CROSS_CORE",
-                flag_id=key[1],
-                detail=f"key={key} counter={cross_core.counter}",
+                flag_id=flag_id,
+                detail=f"flag_id={flag_id} counter={cross_core.counter}",
             )
         )
     return hits
@@ -1001,6 +1048,9 @@ def _detect_buf_overconsume(kernel: KernelScope) -> List[Violation]:
     """Report GET_BUF counts above RLS_BUF count plus the implicit buffer."""
     hits = []
     for (core, buf_id), state in kernel.buf_stall.items():
+        if state.token_mode:
+            # Contract-v7 buffer matching already reports unmatched acquires as BUF_STALL.
+            continue
         available = len(state.rls_queue) + 1
         if state.consumed <= available:
             continue
@@ -1124,6 +1174,21 @@ def detect(kernel: KernelScope, events: List[SyncEvent], mix_mode_force: bool = 
 #   - on redundancy, report both the previous and current instructions
 
 
+# Redundancy checks apply only to the flag SET/WAIT families. Other sync ops
+# (GET_BUF/RLS_BUF, INTRA_BLOCK, ...) use different protocols and must not be
+# compared as if they were SET/WAIT.
+_REDUNDANCY_OPS = frozenset(
+    {
+        "SET_FLAG",
+        "SET_FLAGI",
+        "HSET_FLAG",
+        "WAIT_FLAG",
+        "WAIT_FLAGI",
+        "HWAIT_FLAG",
+    }
+)
+
+
 def _redundancy_key(ev: InstrEvent) -> str:
     """Redundancy pipe key: SET uses pipe, WAIT uses trig_pipe, and other sync instructions use pipe."""
     if ev.op in ("SET_FLAG", "SET_FLAGI", "HSET_FLAG"):
@@ -1194,6 +1259,11 @@ def detect_redundancy(kernel: KernelScope, stream: List[InstrEvent]) -> List[Vio
             continue
         if ev.op == "BAR":
             continue
+        if ev.op not in _REDUNDANCY_OPS:
+            # unrelated sync ops break the consecutive SET/WAIT chain, but are not reported
+            if ev.header_pipe:
+                last_sync.pop(ev.header_pipe, None)
+            continue
         key = _redundancy_key(ev)
         prev = last_sync.get(key)
         if prev is not None and _same_sync_params(prev, ev):
@@ -1225,6 +1295,16 @@ class SyncInstructionDetector:
 
     def run(self, input_path: str) -> List[Violation]:
         records = collect_record_instructions(input_path)
+        records_by_db: Dict[str, List[RecordInstruction]] = {}
+        for record in records:
+            records_by_db.setdefault(record.file, []).append(record)
+
+        all_hits: List[Violation] = []
+        for db_file, db_records in sorted(records_by_db.items()):
+            all_hits.extend(self._run_one_db(Path(db_file).stem, db_records))
+        return all_hits
+
+    def _run_one_db(self, kernel_name: str, records: List[RecordInstruction]) -> List[Violation]:
         events = [_record_instruction_to_sync_event(record) for record in records if record.is_sync]
         # 同 tick 内 SET 族先于 WAIT 族（ExecInstrId 位打包不代表程序序），
         # 否则同 tick 的 SetFlag/WaitFlag 会被误判 WAIT_NO_ARRIVE。
@@ -1238,7 +1318,7 @@ class SyncInstructionDetector:
         all_hits: List[Violation] = []
 
         if self.mix_mode_force:
-            kernel = KernelScope(kernel_id="mix_mode")
+            kernel = KernelScope(kernel_id=kernel_name)
             dispatch_events = events
             if dispatch_events:
                 last = dispatch_events[-1]
@@ -1248,11 +1328,11 @@ class SyncInstructionDetector:
                 kernel.end_file = last.file
             all_hits.extend(detect(kernel, dispatch_events, mix_mode_force=True))
             for core, evs in stream_by_core.items():
-                all_hits.extend(detect_redundancy(KernelScope(kernel_id=core), evs))
+                all_hits.extend(detect_redundancy(KernelScope(kernel_id=f"{kernel_name}:{core}"), evs))
             return all_hits
 
-        for kid, evs in split_kernels(events):
-            kernel = KernelScope(kernel_id=kid)
+        for core, evs in split_kernels(events):
+            kernel = KernelScope(kernel_id=f"{kernel_name}:{core}")
             if evs:
                 last = evs[-1]
                 kernel.end_pc = last.pc
@@ -1260,7 +1340,7 @@ class SyncInstructionDetector:
                 kernel.end_core = last.core
                 kernel.end_file = last.file
             all_hits.extend(detect(kernel, evs, mix_mode_force=self.mix_mode_force))
-            all_hits.extend(detect_redundancy(kernel, stream_by_core.get(kid, [])))
+            all_hits.extend(detect_redundancy(kernel, stream_by_core.get(core, [])))
         return all_hits
 
 
@@ -1278,7 +1358,7 @@ def annotate_with_source(hits: List[Violation], mapper) -> List[Violation]:
     by_kernel: Dict[str, List[int]] = {}
     for v in hits:
         if v.pc:
-            by_kernel.setdefault(v.kernel_id, []).append(v.pc)
+            by_kernel.setdefault(v.core or v.kernel_id, []).append(v.pc)
     lookup = {}
     for kid, pcs in by_kernel.items():
         lookup.update(mapper.lookup_many(kid, pcs))

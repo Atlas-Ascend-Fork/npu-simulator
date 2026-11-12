@@ -1585,6 +1585,11 @@ class ScanRaceRule(RaceRule):
 class DataRaceDetector:
     """Wrap the collect → detect pipeline, running the six data-race detections in rule order."""
 
+    # ScanRaceRule and CrossPipeRaceRule already overlap: both are cross-pipe
+    # RAW/WAR/WAW with missing sync, differing only in scanline+VectorClock vs.
+    # tick sweep + sync chain. CrossPipeRaceRule carries more information
+    # (cur/prev PC/raw/detail), so it is kept by default; ScanRaceRule is
+    # available only when added explicitly in a custom rule pipeline.
     DEFAULT_RULES = [
         CrossPipeRaceRule(),
         SamePipeRaceRule(),
@@ -1597,6 +1602,16 @@ class DataRaceDetector:
         self._rules = rules or self.DEFAULT_RULES
 
     def run(self, input_path: str) -> List[Any]:
+        # Each helper DB is one kernel launch. Run detections per DB so sync state,
+        # pipe maps, vector clocks and GM write/read history never leak across kernels.
+        hits: List[Any] = []
+        for db_file in _find_record_instr_dbs(Path(input_path)):
+            ctx = self._build_context(str(db_file))
+            for rule in self._rules:
+                hits.extend(rule.check(ctx))
+        return hits
+
+    def _build_context(self, input_path: str) -> RaceContext:
         ctx = RaceContext()
         ctx.rw_events = collect_buffer_rw_events(input_path)
         push, set_flags, wait_flags = collect_issque_events(input_path)
@@ -1612,16 +1627,7 @@ class DataRaceDetector:
                 ctx.bar_ticks.setdefault(sync_ev.core, []).append(sync_ev.tick)
         for bar_list in ctx.bar_ticks.values():
             bar_list.sort()
-
-        hits: List[Any] = []
-        for rule in self._rules:
-            hits.extend(rule.check(ctx))
-        # ScanRaceRule and CrossPipeRaceRule already overlap: both are cross-pipe
-        # RAW/WAR/WAW with missing sync, differing only in scanline+VectorClock vs.
-        # tick sweep + sync chain. For one event set they easily emit two reports of the same conflict pair.
-        # CrossPipeRaceRule carries more information (cur/prev PC/raw/detail), so
-        # it is kept by default; ScanRaceRule is available only when added explicitly in a custom rule pipeline.
-        return hits
+        return ctx
 
 
 def run(input_path: str) -> List[Any]:

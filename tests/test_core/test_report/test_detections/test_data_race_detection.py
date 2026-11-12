@@ -63,14 +63,14 @@ from npusim.core.report.detections.data_race_detection import (
 )
 
 
-def _write_record_db(root, rows):
+def _write_record_db(root, rows, filename="record.db"):
     """Create a single-file helper record DB holding ExecutedInstructions rows.
 
     Row shape: (instr_id, core_id, core_type_id, name, tick, instr_type_id, pc, params).
     Includes the contract-v7 MemoryRWAccesses table (with Size) so the
     DB-only buffer/issque readers are active.
     """
-    con = sqlite3.connect(Path(root) / "record.db")
+    con = sqlite3.connect(Path(root) / filename)
     con.executescript("""
         CREATE TABLE ExecutedInstructions(
             ExecInstrId INTEGER PRIMARY KEY,
@@ -119,13 +119,13 @@ def _write_instr_db(root, rows):
     con.close()
 
 
-def _write_mem_access_db(root, rows):
+def _write_mem_access_db(root, rows, filename="record.db"):
     """Create a helper record DB with a MemoryRWAccesses table.
 
     Row shape: (addr, mode, tick, memory_type, instr_id, core_id, size, step).
     ExecutedInstructions is created empty so the instr-join readers work.
     """
-    con = sqlite3.connect(Path(root) / "record.db")
+    con = sqlite3.connect(Path(root) / filename)
     con.executescript("""
         CREATE TABLE ExecutedInstructions(
             ExecInstrId INTEGER PRIMARY KEY,
@@ -1852,6 +1852,43 @@ class UbCrossCoreIntegrationTests(unittest.TestCase):
             hits = run(str(root))
             ub_rules = [h.rule for h in hits if isinstance(h, GmViolation) and h.rule.startswith("UB_")]
             self.assertNotIn("UB_CROSS_CORE_WAW", ub_rules)
+
+
+class KernelIsolationTests(unittest.TestCase):
+    """Each record DB is one kernel launch; race state must not leak across kernels."""
+
+    def test_same_gm_address_written_in_two_kernels_is_not_waw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_mem_access_db(
+                root,
+                [(0x1000, "W", 100, 0, 1, 0, 64, 0)],
+                filename="kernel_a.db",
+            )
+            _write_mem_access_db(
+                root,
+                [(0x1000, "W", 100, 0, 1, 0, 64, 0)],
+                filename="kernel_b.db",
+            )
+            hits = run(str(root))
+            gm_rules = [h.rule for h in hits if isinstance(h, GmViolation)]
+            self.assertNotIn("GM_WAW_OVERLAP", gm_rules)
+            self.assertNotIn("GM_CROSS_CORE_WAW", gm_rules)
+
+    def test_gm_waw_within_one_kernel_still_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_mem_access_db(
+                root,
+                [
+                    (0x1000, "W", 100, 0, 1, 0, 64, 0),
+                    (0x1000, "W", 200, 0, 2, 0, 64, 0),
+                ],
+                filename="kernel_a.db",
+            )
+            hits = run(str(root))
+            gm_rules = [h.rule for h in hits if isinstance(h, GmViolation)]
+            self.assertIn("GM_WAW_OVERLAP", gm_rules)
 
 
 if __name__ == "__main__":

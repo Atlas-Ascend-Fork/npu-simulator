@@ -42,9 +42,9 @@ _InstrRow = namedtuple("_InstrRow", "instr_id core_id core_type_id op tick instr
 RecordRow = namedtuple("RecordRow", "instr_id core_id core_type_id op tick is_sync pc params")
 
 
-def _write_record_db(dirpath, rows):
+def _write_record_db(dirpath, rows, filename="record.db"):
     """Create a helper record DB containing executed instructions."""
-    path = Path(dirpath) / "record.db"
+    path = Path(dirpath) / filename
     with sqlite3.connect(path) as con:
         con.executescript(
             """
@@ -316,6 +316,79 @@ class SyncCheckRuleTests(unittest.TestCase):
         self.assertEqual(hits, [])
 
 
+class SyncCheckKernelIsolationTests(unittest.TestCase):
+    """Each record DB is one kernel launch; sync state must not leak across DBs or cores."""
+
+    def _run_dbs(self, dbs, mix_mode_force=True):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for filename, rows in dbs.items():
+                _write_record_db(root, rows, filename=filename)
+            return run(str(root), mix_mode_force=mix_mode_force)
+
+    @staticmethod
+    def _balanced_rows(tick=100):
+        rows = SyncCheckRuleTests._rows("SET_FLAG", tick)
+        rows += SyncCheckRuleTests._rows("WAIT_FLAG", tick + 10, 2)
+        return rows
+
+    def test_balanced_flags_in_two_kernels_are_isolated(self):
+        hits = self._run_dbs(
+            {
+                "kernel_a.db": self._balanced_rows(),
+                "kernel_b.db": self._balanced_rows(),
+            }
+        )
+        self.assertEqual(hits, [])
+
+    def test_set_and_wait_in_different_kernels_are_not_paired(self):
+        hits = self._run_dbs(
+            {
+                "kernel_a.db": SyncCheckRuleTests._rows("SET_FLAG", 100),
+                "kernel_b.db": SyncCheckRuleTests._rows("WAIT_FLAG", 110, 2),
+            }
+        )
+        rules = [h.rule for h in hits]
+        self.assertIn("UNCONSUMED_ARRIVE", rules)
+        self.assertIn("WAIT_NO_ARRIVE", rules)
+
+    def test_same_flag_on_different_cores_is_isolated(self):
+        rows = SyncCheckRuleTests._rows("SET_FLAG", 100, 1, core_id=0)
+        rows += SyncCheckRuleTests._rows("SET_FLAG", 100, 3, core_id=1)
+        rows += SyncCheckRuleTests._rows("WAIT_FLAG", 110, 2, core_id=0)
+        rows += SyncCheckRuleTests._rows("WAIT_FLAG", 110, 4, core_id=1)
+        self.assertEqual(self._run_dbs({"mix_kernel.db": rows}), [])
+
+
+class SyncCheckCrossCoreTests(unittest.TestCase):
+    """SET_CROSS_CORE / WAIT_FLAG_DEV pairing across cores using DB ffts_mode."""
+
+    @staticmethod
+    def _row(op, tick, instr_id, flag_id, core_type_id, ffts_mode=None):
+        params = {"flag_id": flag_id, "target_pipe": "SCALAR", "consumer_pipe": "?"}
+        if ffts_mode is not None:
+            params["ffts_mode"] = ffts_mode
+        return RecordRow(instr_id, 0, core_type_id, op, tick, 0, 0x9000D0D0E4 + instr_id, params)
+
+    def _run_db(self, rows):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_record_db(root, rows)
+            return run(str(root), mix_mode_force=True)
+
+    def test_mode2_cube_set_is_consumed_by_two_vector_waits(self):
+        rows = [
+            self._row("SET_CROSS_CORE", 100, 1, 8, core_type_id=1, ffts_mode=2),
+            self._row("WAIT_FLAG_DEV", 110, 2, 8, core_type_id=2),
+            self._row("WAIT_FLAG_DEV", 110, 3, 8, core_type_id=3),
+        ]
+        self.assertEqual(self._run_db(rows), [])
+
+    def test_cube_set_without_vector_wait_is_unconsumed(self):
+        rows = [self._row("SET_CROSS_CORE", 100, 1, 8, core_type_id=1, ffts_mode=2)]
+        self.assertIn("UNCONSUMED_CROSS_CORE", [h.rule for h in self._run_db(rows)])
+
+
 class SyncCheckLockBufTests(unittest.TestCase):
     """GET_BUF/RLS_BUF buf sync detection (stall + overconsume + id oob)."""
 
@@ -389,6 +462,50 @@ class SyncCheckLockBufTests(unittest.TestCase):
         get_bufs = [e for e in events if e.op == "GET_BUF"]
         self.assertEqual(get_bufs[0].rls_count, 2)
         self.assertEqual(get_bufs[1].rls_count, 2)
+
+    @staticmethod
+    def _token_row(op, tick, instr_id, buf_id, buf_cnt, buf_mode=0):
+        return RecordRow(
+            instr_id,
+            0,
+            2,
+            op,
+            tick,
+            0,
+            0x9000D0D0E4 + instr_id * 4,
+            {
+                "sync_kind": "ACQUIRE_BUFFER" if op == "GET_BUF" else "RELEASE_BUFFER",
+                "target_pipe": "VEC",
+                "buf_id": buf_id,
+                "buf_mode": buf_mode,
+                "buf_cnt": buf_cnt,
+            },
+        )
+
+    def test_contract_v7_buffer_tokens_match_release(self):
+        rows = [
+            self._token_row("RLS_BUF", 50, 1, 0, 1),
+            self._token_row("GET_BUF", 100, 2, 0, 2),
+            self._token_row("RLS_BUF", 150, 3, 4, 1),
+            self._token_row("GET_BUF", 200, 4, 4, 2),
+        ]
+        rules = self._rules(rows)
+        self.assertNotIn("BUF_STALL", rules)
+        self.assertNotIn("RLS_BUF_OVERCONSUME", rules)
+
+    def test_contract_v7_buffer_second_acquire_without_release_stalls(self):
+        rows = [
+            self._token_row("GET_BUF", 100, 1, 0, 2),
+            self._token_row("GET_BUF", 200, 2, 0, 2),
+        ]
+        self.assertIn("BUF_STALL", self._rules(rows))
+
+    def test_contract_v7_buffer_mode1_acquire_is_non_blocking(self):
+        rows = [
+            self._token_row("GET_BUF", 100, 1, 0, 2, buf_mode=1),
+            self._token_row("GET_BUF", 200, 2, 0, 2, buf_mode=1),
+        ]
+        self.assertNotIn("BUF_STALL", self._rules(rows))
 
     @staticmethod
     def _buf_event(op: str, cycle: int, instr_id: int, flag_id: int) -> SyncEvent:
@@ -572,6 +689,25 @@ class SyncCheckRedundancyTests(unittest.TestCase):
         rows = [
             self._row("SET_FLAG", 100, 1, self._sync_params(flag_id=0)),
             self._row("SET_FLAG", 101, 2, self._sync_params(flag_id=1)),
+        ]
+        self.assertNotIn("REDUNDANT_SET_FLAG", self._rules(self._run_db(rows)))
+
+    def test_get_buf_pair_is_not_reported_as_redundant_wait(self):
+        # GET_BUF/RLS_BUF are sync ops but not the SET/WAIT flag protocol; they must not
+        # be compared (or labeled) as REDUNDANT_WAIT_FLAG.
+        params = {"target_pipe": "MTE2", "consumer_pipe": "?", "flag_id": -1}
+        rows = [
+            self._row("GET_BUF", 100, 1, params),
+            self._row("GET_BUF", 101, 2, params),
+        ]
+        self.assertNotIn("REDUNDANT_WAIT_FLAG", self._rules(self._run_db(rows)))
+
+    def test_get_buf_breaks_set_flag_redundancy_chain(self):
+        params = {"target_pipe": "VEC", "consumer_pipe": "?", "flag_id": -1}
+        rows = [
+            self._row("SET_FLAG", 100, 1, self._sync_params()),
+            self._row("GET_BUF", 101, 2, params),
+            self._row("SET_FLAG", 102, 3, self._sync_params()),
         ]
         self.assertNotIn("REDUNDANT_SET_FLAG", self._rules(self._run_db(rows)))
 
