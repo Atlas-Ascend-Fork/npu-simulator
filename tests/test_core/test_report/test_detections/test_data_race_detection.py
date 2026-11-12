@@ -216,6 +216,35 @@ class WawCheckParseTests(unittest.TestCase):
             self.assertEqual(rws[0].size, 32)
             self.assertEqual(rws[0].buf_kind, "ub")
 
+    def test_collect_buffer_rw_events_uses_instruction_owner_core(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # contract-v7: MemoryRWAccesses.CoreId is always 0 and ExecInstrId
+            # only holds the low 32 bits; the owner core lives in ExecutedInstructions.
+            _write_mem_access_db(root, [(0x1000, "W", 150, 1, 9, 0, 32, 0)])
+            _write_instr_db(
+                root,
+                [
+                    (
+                        9 | (1 << 32),
+                        1,
+                        3,
+                        "MOV_SRC_TO_DST_ALIGNv2",
+                        150,
+                        0,
+                        0x1234,
+                        {"queue_type": "MTE2"},
+                    )
+                ],
+            )
+            rws = collect_buffer_rw_events(str(root))
+            self.assertEqual(len(rws), 1)
+            self.assertEqual(rws[0].core, 1)
+            self.assertEqual(rws[0].sub, 1)
+            self.assertEqual(rws[0].core_type_id, 3)
+            self.assertEqual(rws[0].instr_name, "MOV_SRC_TO_DST_ALIGNv2")
+            self.assertEqual(rws[0].pc, 0x1234)
+
     def test_collect_buffer_rw_events_uses_step_for_strided_access(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -357,6 +386,41 @@ class GmMemAccessDbTests(unittest.TestCase):
                     ("READ", 1, 200, "mte0", 9, 0x2000, 128),
                 ],
             )
+
+    def test_collect_gm_rw_events_uses_instruction_owner_core(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # MemoryRWAccesses.CoreId stays 0; the owning core is in the instruction row.
+            _write_mem_access_db(root, [(0x1000, "W", 100, 0, 9, 0, 512, 1)])
+            _write_instr_db(
+                root,
+                [(9 | (1 << 32), 1, 3, "MOV_SRC_TO_DST_ALIGNv2", 100, 0, 0x1234, {})],
+            )
+            gms = collect_gm_rw_events(str(root))
+            self.assertEqual(len(gms), 1)
+            self.assertEqual(gms[0].core, 1)
+            self.assertEqual(gms[0].instr_id, 9)
+
+    def test_gm_cross_core_race_uses_instruction_owner_core(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_mem_access_db(
+                root,
+                [
+                    (0x1000, "W", 100, 0, 9, 0, 64, 0),
+                    (0x1000, "W", 200, 0, 10, 0, 64, 0),
+                ],
+            )
+            _write_instr_db(
+                root,
+                [
+                    (9, 0, 2, "MOV_SRC_TO_DST_ALIGNv2", 100, 0, 0x100, {"queue_type": "MTE2"}),
+                    (10 | (1 << 32), 1, 2, "MOV_SRC_TO_DST_ALIGNv2", 200, 0, 0x200, {"queue_type": "MTE2"}),
+                ],
+            )
+            hits = run(str(root))
+            gm_rules = [h.rule for h in hits if isinstance(h, GmViolation)]
+            self.assertIn("GM_CROSS_CORE_WAW", gm_rules)
 
     def test_collect_gm_rw_events_no_gm_rows(self):
         with tempfile.TemporaryDirectory() as tmp:

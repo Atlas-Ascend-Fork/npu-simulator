@@ -210,11 +210,10 @@ _VALID_PIPES = frozenset(_QT_TO_PIPE.values())
 def _collect_buffer_rw_events_from_db(input_path: str) -> List[RwEvent]:
     """Read buffer accesses from MemoryRWAccesses (MemoryType>0).
 
-    Instruction attribution (sub/pc/instr_name) joins ExecutedInstructions on
-    (low32(ExecInstrId), CoreId). A duplicated low32 within one CoreId (re-issued
-    instruction) keeps the first row, which only affects reported pc/name —
-    detection fields (addr/size/tick/op/core/sub/pipe) come from this table
-    or CoreTypeId.
+    Instruction attribution joins ExecutedInstructions on low32(ExecInstrId) only:
+    MemoryRWAccesses.CoreId is 0 for every row in contract-v7, while the real
+    owner core/type lives in ExecutedInstructions.ExecInstrCoreId/CoreTypeId.
+    A duplicated low32 (re-issued instruction) keeps the first row.
     """
     rw_events: List[RwEvent] = []
     query = (
@@ -240,18 +239,19 @@ def _collect_buffer_rw_events_from_db(input_path: str) -> List[RwEvent]:
                     start_pc = int(row[0])
             except (sqlite3.Error, TypeError, ValueError):
                 start_pc = 0
-            # (low32 ExecInstrId, CoreId) -> (core_type_id, instr_name, rel_pc)
-            instr_lookup: Dict[Tuple[int, int], Tuple[int, str, int]] = {}
+            # low32 ExecInstrId -> (owner core, core_type_id, instr_name, rel_pc)
+            instr_lookup: Dict[int, Tuple[int, int, str, int]] = {}
             for eid, ecore, etype, ename, eaddr in con.execute(instr_query):
                 try:
-                    key = (int(eid) & _INSTR_ID_MASK, int(ecore))
+                    key = int(eid) & _INSTR_ID_MASK
+                    value = (int(ecore), int(etype), str(ename or ""), int(eaddr or 0))
                 except (TypeError, ValueError):
                     continue
-                instr_lookup.setdefault(key, (int(etype), str(ename or ""), int(eaddr or 0)))
+                instr_lookup.setdefault(key, value)
             rows = con.execute(query)
-            for addr, mode, tick, mem_type, instr_id, core_id, size, step in rows:
+            for addr, mode, tick, mem_type, instr_id, db_core_id, size, step in rows:
                 try:
-                    core_id = int(core_id)
+                    db_core_id = int(db_core_id)
                     tick = int(tick)
                     addr = int(addr)
                     size = int(size) if size is not None else 0
@@ -266,7 +266,7 @@ def _collect_buffer_rw_events_from_db(input_path: str) -> List[RwEvent]:
                 except (TypeError, ValueError):
                     logger.warning("Invalid buffer access row in %s: Addr=%s Tick=%s", db_path, addr, tick)
                     continue
-                core_type_id, name, rel_pc = instr_lookup.get((instr_id, core_id), (1, "", 0))
+                core_id, core_type_id, name, rel_pc = instr_lookup.get(instr_id, (db_core_id, 1, "", 0))
                 pc = start_pc + rel_pc
                 rw_events.append(
                     RwEvent(
@@ -283,9 +283,9 @@ def _collect_buffer_rw_events_from_db(input_path: str) -> List[RwEvent]:
                         file=str(db_path),
                         core_type_id=core_type_id,
                         raw=(
-                            f"MemoryRWAccesses MemoryType={mem_type} CoreId={core_id} "
-                            f"AccessMode={mode} AccessTime={tick} Addr=0x{addr:x} Size={size} "
-                            f"InstrName={name} Pc=0x{pc:x}"
+                            f"MemoryRWAccesses MemoryType={mem_type} CoreId={db_core_id} "
+                            f"resolved_core={core_id} AccessMode={mode} AccessTime={tick} "
+                            f"Addr=0x{addr:x} Size={size} InstrName={name} Pc=0x{pc:x}"
                         ),
                     )
                 )
@@ -2095,6 +2095,7 @@ def collect_gm_rw_events(input_path: str) -> List[GmEvent]:
         "FROM MemoryRWAccesses WHERE MemoryType = 0 "
         "ORDER BY CoreId, AccessTime, AccessedAddress"
     )
+    instr_query = "SELECT ExecInstrId, ExecInstrCoreId FROM ExecutedInstructions"
     for db_path in _find_record_instr_dbs(Path(input_path)):
         try:
             con = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
@@ -2102,17 +2103,26 @@ def collect_gm_rw_events(input_path: str) -> List[GmEvent]:
             logger.warning("Failed to open record DB %s: %s", db_path, exc)
             continue
         try:
-            rows = con.execute(query)
-            for core_id, mode, tick, addr, size, instr_id in rows:
+            # MemoryRWAccesses.CoreId is 0 in contract-v7; the owner core comes
+            # from ExecutedInstructions.ExecInstrCoreId, joined on low32 id.
+            core_lookup: Dict[int, int] = {}
+            for eid, ecore in con.execute(instr_query):
                 try:
-                    core_id = int(core_id)
+                    core_lookup.setdefault(int(eid) & _GM_INSTR_ID_MASK, int(ecore))
+                except (TypeError, ValueError):
+                    continue
+            rows = con.execute(query)
+            for db_core_id, mode, tick, addr, size, instr_id in rows:
+                try:
+                    db_core_id = int(db_core_id)
                     tick = int(tick)
                     addr = int(addr)
                     size = int(size) if size is not None else 0
                     instr_id = (int(instr_id) if instr_id is not None else 0) & _GM_INSTR_ID_MASK
                 except (TypeError, ValueError):
-                    logger.warning("Invalid GM access row in %s: CoreId=%s Addr=%s", db_path, core_id, addr)
+                    logger.warning("Invalid GM access row in %s: CoreId=%s Addr=%s", db_path, db_core_id, addr)
                     continue
+                core_id = core_lookup.get(instr_id, db_core_id)
                 gm_events.append(
                     GmEvent(
                         kind="READ" if str(mode).upper().startswith("R") else "WRITE",
@@ -2124,7 +2134,8 @@ def collect_gm_rw_events(input_path: str) -> List[GmEvent]:
                         size=size,
                         file=str(db_path),
                         raw=(
-                            f"MemoryRWAccesses MemoryType=0 CoreId={core_id} AccessMode={mode} "
+                            f"MemoryRWAccesses MemoryType=0 CoreId={db_core_id} "
+                            f"resolved_core={core_id} AccessMode={mode} "
                             f"AccessTime={tick} Addr=0x{addr:x} Size={size}"
                         ),
                     )
