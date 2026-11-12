@@ -24,7 +24,11 @@ NPUSim 在执行 `record` / `report` 时会自动运行数据竞争检测，基�
 | `MemoryRWAccesses`（`MemoryType = 0`） | GM/HBM 的读写事务，构成 GM 竞争检测的事件集。 |
 | `KernelInfo` | 读取 `start_pc`，把 `SourceInstrAddr` 还原为绝对 PC。 |
 
-检测需要 **contract-v7** 的 record DB（`MemoryRWAccesses` 含 `Size` 列）。DB 由与当前 wheel 同版本的 cannsim_helper 生成；版本不一致时 report 会直接报错退出。若输入目录没有 record DB（例如仅 `instr.bin`），检测会跳过并写出空结果，不会让 `report` 失败。
+检测需要 **contract-v7** 的 record DB（`MemoryRWAccesses` 含 `Size` 列），且 DB 必须由与当前 wheel 同版本的 cannsim_helper 生成；版本不一致时 report 会直接报错退出。`instr.bin` / `log_ca` 输入已不再被任何 report 后端支持：若输入目录没有 record DB，`npusim report` 会直接失败退出，不会写出空检测结果。请使用与当前 wheel 匹配的 cannsim_helper 重新采集：
+
+```bash
+npusim record ./your_app -s Ascend950 -g
+```
 
 ## 生成报告
 
