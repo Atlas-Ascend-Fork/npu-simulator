@@ -34,7 +34,30 @@ set -uo pipefail
 WORKSPACE="${WORKSPACE:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "${WORKSPACE}"
 
+# 编译阶段产出的 wheel 通过 smoke_run_file_url 传进来。smoke job 是干净的
+# checkout，dist/ 里没有构建产物，必须在这里下载，否则步骤 3 找不到 wheel。
+# URL 可能带签名查询串，先去掉再取文件名。
+if [ -n "${smoke_run_file_url:-}" ]; then
+    _smoke_file="${smoke_run_file_url%%\?*}"
+    _wheel_name=$(basename "${_smoke_file}")
+    if [ "${_wheel_name##*.}" != "whl" ]; then
+        echo "ERROR: smoke_run_file_url 不是 wheel：${_smoke_file}"
+        exit 1
+    fi
+    mkdir -p "${WORKSPACE}/dist"
+    if ! wget -nv -O "${WORKSPACE}/dist/${_wheel_name}" "${smoke_run_file_url}"; then
+        echo "ERROR: 下载 wheel 失败：${smoke_run_file_url}"
+        exit 1
+    fi
+    echo "已下载 wheel：${WORKSPACE}/dist/${_wheel_name}"
+fi
+
 ARCH=$(uname -m)
+# 不同环境可能把 arm64/aarch64、x64/amd64 混用，统一成 CANN 的目录名。
+case "${ARCH}" in
+    arm64|aarch64) ARCH="aarch64" ;;
+    x64|amd64|x86_64) ARCH="x86_64" ;;
+esac
 # dav-3510 是 ST 样例 CMake 认可的 Ascend950 NPU 架构名。
 NPU_ARCH="${NPU_ARCH:-dav-3510}"
 SOC_VERSION="${SOC_VERSION:-Ascend950}"
@@ -107,6 +130,36 @@ SAMPLE_CASES=(
     "bw_read|1_Features/hardware_features/mem_bandwidth|bw_read|16384 4|none||"
 )
 
+# 可选：命令行给出样例时只跑匹配的样例，便于本地/单样例排查。
+# 匹配 target、源码子路径，或路径末段（例如 quantize_hif8_demo）。
+CASES=("${SAMPLE_CASES[@]}")
+if [ "$#" -gt 0 ]; then
+    CASES=()
+    for _case in "${SAMPLE_CASES[@]}"; do
+        _target="${_case%%|*}"
+        _rest="${_case#*|}"
+        _path="${_rest%%|*}"
+        for _want in "$@"; do
+            _want_base="${_want##*/}"
+            if [[ "${_case}" == *"${_want}"* \
+                    || "${_target}" == "${_want}" \
+                    || "${_target}" == "${_want_base}" \
+                    || "${_path}" == *"${_want}"* ]]; then
+                CASES+=("${_case}")
+                break
+            fi
+        done
+    done
+    if [ "${#CASES[@]}" -eq 0 ]; then
+        echo "ERROR: 没有样例匹配参数：$*"
+        exit 1
+    fi
+    echo "仅运行匹配的样例："
+    for _case in "${CASES[@]}"; do
+        echo "  ${_case%%|*}"
+    done
+fi
+
 log() {
     echo "===================================================================="
     echo "$(date '+%Y%m%d.%H%M%S') : $*"
@@ -157,11 +210,20 @@ log "步骤 1：检查 CANN toolkit（arch=${ARCH}）"
 
 CANN_PREINSTALLED=false
 
-# 若镜像里已预装 toolkit（例如 ci_cann），直接复用。
+# 若镜像里已预装 toolkit（例如 ci_cann），直接复用。不同镜像的安装目录不同：
+# 编包/UT 镜像把 CANN 装在 /home/jenkins/Ascend/cann（见 compile.sh、ut.sh），
+# 官方镜像在 /usr/local/Ascend/cann 或 ascend-toolkit，ARM 与 x86 都要覆盖。
 for _set_env in \
-    "/home/jenkins/Ascend/ascend-toolkit/set_env.sh" \
+    "/home/jenkins/Ascend/cann/bin/setenv.bash" \
+    "/home/jenkins/Ascend/cann/set_env.sh" \
+    "/usr/local/Ascend/cann/set_env.sh" \
     "/usr/local/Ascend/ascend-toolkit/set_env.sh" \
-    "${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh"; do
+    "${CANN_INSTALL_PATH}/cann/set_env.sh" \
+    "${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh" \
+    "${CANN_INSTALL_PATH}/set_env.sh" \
+    "${ASCEND_TOOLKIT_HOME:-}/set_env.sh" \
+    "${ASCEND_HOME_PATH:-}/set_env.sh"; do
+    [ -n "${_set_env}" ] || continue
     if [ -f "${_set_env}" ]; then
         set +u
         # shellcheck disable=SC1090
@@ -244,6 +306,7 @@ PYEOF
 
     set +u
     for _set_env in \
+        "${CANN_INSTALL_PATH}/cann/set_env.sh" \
         "${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh" \
         "${CANN_INSTALL_PATH}/set_env.sh"; do
         if [ -f "${_set_env}" ]; then
@@ -257,8 +320,12 @@ PYEOF
 fi
 
 # 样例的 cmake/ascend.cmake 读 ASCEND_HOME_PATH，npusim 读
-# ASCEND_TOOLKIT_HOME，两者指向同一棵树。
-: "${ASCEND_TOOLKIT_HOME:=${ASCEND_HOME_PATH:-${CANN_INSTALL_PATH}/ascend-toolkit/latest}}"
+# ASCEND_TOOLKIT_HOME，两者指向同一棵树。新版本 toolkit 默认装在 <path>/cann。
+if [ -d "${CANN_INSTALL_PATH}/cann" ]; then
+    : "${ASCEND_TOOLKIT_HOME:=${ASCEND_HOME_PATH:-${CANN_INSTALL_PATH}/cann}}"
+else
+    : "${ASCEND_TOOLKIT_HOME:=${ASCEND_HOME_PATH:-${CANN_INSTALL_PATH}/ascend-toolkit/latest}}"
+fi
 : "${ASCEND_HOME_PATH:=${ASCEND_TOOLKIT_HOME}}"
 export ASCEND_TOOLKIT_HOME ASCEND_HOME_PATH
 
@@ -414,7 +481,7 @@ fi
 # 只编待测 target。全量编译 83 个 dav-3510 样例耗时长得多，而且会牵扯到无关
 # 样例的数据生成脚本（曾因此失败）。
 BUILD_TARGETS=()
-for _case in "${SAMPLE_CASES[@]}"; do
+for _case in "${CASES[@]}"; do
     IFS='|' read -r _target _ _ _ _ _ _ <<< "${_case}"
     BUILD_TARGETS+=("--target" "${_target}")
 done
@@ -426,7 +493,7 @@ if ! cmake --build "${SAMPLES_BUILD_DIR}" "${BUILD_TARGETS[@]}" --parallel 2>&1 
 fi
 
 # 校验产物，并把运行期需要的脚本放到可执行文件旁边。
-for _case in "${SAMPLE_CASES[@]}"; do
+for _case in "${CASES[@]}"; do
     IFS='|' read -r _target _path _bin _ _ _ _ <<< "${_case}"
     # CMake 在 build/ 下镜像源码目录结构，所以是 build/st-samples/Samples/<path>。
     _dir="${SAMPLES_BUILD_DIR}/Samples/${_path}"
@@ -557,11 +624,11 @@ if [ "${SIM_JOBS}" -gt 1 ]; then
     # 仅在显式要求并发时才走 xargs（不推荐，见 SIM_JOBS 处说明）。
     export -f run_one_case
     export SAMPLES_BUILD_DIR SIM_ROOT SOC_VERSION NPUSIM
-    printf '%s\n' "${SAMPLE_CASES[@]}" \
+    printf '%s\n' "${CASES[@]}" \
         | xargs -P "${SIM_JOBS}" -I{} bash -c 'run_one_case "{}"'
 else
     # 串行直接循环：日志按样例顺序输出，便于实时看进度。
-    for _case in "${SAMPLE_CASES[@]}"; do
+    for _case in "${CASES[@]}"; do
         IFS='|' read -r _t _ _ _ _ _ _ <<< "${_case}"
         echo "  [${_t}] 开始仿真..."
         run_one_case "${_case}"
@@ -585,7 +652,7 @@ check() {
     fi
 }
 
-for _case in "${SAMPLE_CASES[@]}"; do
+for _case in "${CASES[@]}"; do
     IFS='|' read -r _target _path _bin _args _verify _ _ <<< "${_case}"
     _work="${SIM_ROOT}/${_target}"
     _log="${_work}/run.log"
