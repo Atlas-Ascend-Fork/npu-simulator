@@ -516,7 +516,16 @@ class ReportsTest(unittest.TestCase):
         (package / "__init__.py").write_text("", encoding="utf-8")
         shutil.copytree(MODULE, package / "prof_demo", ignore=shutil.ignore_patterns("__pycache__", "tests"))
         result = subprocess.run(
-            [sys.executable, "-S", "-m", "npusim.prof_demo", "--input-db", str(self.db), "-o", str(self.root / "standalone")],
+            [
+                sys.executable,
+                "-S",
+                "-m",
+                "npusim.prof_demo",
+                "--input-db",
+                str(self.db),
+                "-o",
+                str(self.root / "standalone"),
+            ],
             cwd=isolated,
             capture_output=True,
             text=True,

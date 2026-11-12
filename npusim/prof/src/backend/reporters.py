@@ -109,6 +109,17 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
         ret = 0
         database_handler.connect(input_db)
         try:
+            # Warmup / 空 kernel 的 DB 没有任何执行指令（如 VF profiling 样例的
+            # warmup_kernel），后续分析会因 exec_time_ticks=0 除零。直接跳过，
+            # 避免一个空 DB 拖垮整次 report。
+            if (
+                not database_handler.table_exists("ExecutedInstructions")
+                or database_handler.count_rows("ExecutedInstructions") == 0
+            ):
+                print_info(f"Skip empty kernel DB (no executed instructions): {input_db}")
+                log.info("skip empty kernel DB: %s", input_db)
+                return 0
+
             database_handler.create_tables(self._analysis_name)
             self._arch = database_handler.get_arch() or self._arch
             if biprof_ctx.arch is None and self._arch is not None:
