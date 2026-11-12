@@ -50,6 +50,19 @@ def _resolve_ca_model_path(ascend_toolkit: Path, soc_version: str) -> tuple[Path
     return ascend_toolkit / f"tools/simulator/{camodel_dir}/camodel", "ASCEND_TOOLKIT_HOME"
 
 
+def create_unique_target_dir(base: Path) -> Path:
+    """Reserve a new run directory without reusing an existing archive."""
+    base.parent.mkdir(parents=True, exist_ok=True)
+    suffix = 0
+    while True:
+        target = base if suffix == 0 else base.with_name(f"{base.name}_{suffix}")
+        try:
+            target.mkdir()
+            return target
+        except FileExistsError:
+            suffix += 1
+
+
 def resolve_record_paths(output: Path, soc_version: str, launch) -> tuple:
     ascend_toolkit_path = os.getenv("ASCEND_TOOLKIT_HOME", None)
     if not ascend_toolkit_path:
@@ -63,7 +76,6 @@ def resolve_record_paths(output: Path, soc_version: str, launch) -> tuple:
     timestamp_str = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d%H%M%S")
     target_dir = Path(output).resolve() / f"npusim_{timestamp_str}_{launch.label}"
     record_dir = target_dir / "record"
-    cannsim_log = target_dir / "npusim.log"
 
     context = {
         "USER_APP": launch.raw,
@@ -84,8 +96,9 @@ def resolve_record_paths(output: Path, soc_version: str, launch) -> tuple:
         )
 
     try:
-        target_dir.mkdir(parents=True, exist_ok=True)
-        record_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = create_unique_target_dir(target_dir)
+        record_dir = target_dir / "record"
+        record_dir.mkdir()
     except Exception as e:
         raise RecordPathError(
             f"Failed to create output directory: {e}\n"
@@ -94,6 +107,8 @@ def resolve_record_paths(output: Path, soc_version: str, launch) -> tuple:
             context,
         )
 
+    context["OUTPUT PATH"] = str(target_dir)
+    cannsim_log = target_dir / "npusim.log"
     return (
         RecordPaths(
             ascend_toolkit_path=ascend_toolkit,

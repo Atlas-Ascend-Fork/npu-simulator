@@ -312,7 +312,11 @@ def cc_restore_hccl(handles) -> None:
         if orig is None:
             bak = str(target) + ".ccbak"
             if Path(bak).exists():
-                os.rename(bak, str(target))
+                shutil.copy2(bak, str(target))
+                try:
+                    Path(bak).unlink()
+                except FileNotFoundError:
+                    pass
         else:
             target.symlink_to(orig)
 

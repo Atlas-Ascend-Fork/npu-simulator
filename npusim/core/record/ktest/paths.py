@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from npusim.core.record.paths import create_unique_target_dir
+
 
 @dataclass(frozen=True)
 class KtestPaths:
@@ -81,8 +83,9 @@ def resolve_ktest_paths(output: Path, label: str = "case") -> tuple:
         )
 
     try:
-        target_dir.mkdir(parents=True, exist_ok=True)
-        record_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = create_unique_target_dir(target_dir)
+        record_dir = target_dir / "record"
+        record_dir.mkdir()
     except Exception as e:
         raise KtestPathError(
             f"Failed to create output directory: {e}\n"
@@ -91,6 +94,7 @@ def resolve_ktest_paths(output: Path, label: str = "case") -> tuple:
             context,
         )
 
+    context["OUTPUT PATH"] = str(target_dir)
     return (
         KtestPaths(
             ascend_home=ascend_home,

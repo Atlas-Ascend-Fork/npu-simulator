@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -25,6 +27,29 @@ from npusim.core.record.runtime import build_execution_env
 
 
 class RecordPathsTest(unittest.TestCase):
+    def test_same_second_runs_keep_separate_record_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            toolkit = root / "toolkit"
+            (toolkit / "tools/simulator/Ascend950PR_9589/camodel").mkdir(parents=True)
+            launch = SimpleNamespace(
+                label="vector_add", raw="./vector_add", kind="binary", cwd=root, executable_path=None
+            )
+            fixed_time = datetime(2026, 10, 27, 1, 0, 0, tzinfo=timezone.utc)
+            paths_module = importlib.import_module("npusim.core.record.paths")
+            with patch.dict(os.environ, {"ASCEND_TOOLKIT_HOME": str(toolkit)}), patch.object(
+                paths_module, "datetime"
+            ) as clock:
+                clock.now.return_value = fixed_time
+                first, _ = resolve_record_paths(root / "output", "Ascend950", launch)
+                (first.record_dir / "sentinel.txt").write_text("previous run", encoding="utf-8")
+                second, context = resolve_record_paths(root / "output", "Ascend950", launch)
+
+            self.assertNotEqual(first.target_dir, second.target_dir)
+            self.assertEqual(context["OUTPUT PATH"], str(second.target_dir))
+            self.assertFalse((second.record_dir / "sentinel.txt").exists())
+            self.assertEqual((first.record_dir / "sentinel.txt").read_text(encoding="utf-8"), "previous run")
+
     def test_record_outputs_use_npusim_public_names(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
