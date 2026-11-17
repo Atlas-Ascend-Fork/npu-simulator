@@ -358,6 +358,11 @@ def _load_device_pcs_from_record_db(
         return result
 
     try:
+        start_pc = None
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='KernelInfo'").fetchone():
+            start = con.execute("SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr='start_pc'").fetchone()
+            if start is not None:
+                start_pc = int(start[0])
         rows = con.execute(query)
         for core_id, core_type_id, pc in rows:
             try:
@@ -366,10 +371,14 @@ def _load_device_pcs_from_record_db(
                 pc = int(pc)
             except (TypeError, ValueError):
                 continue
-            if not is_device_pc(pc):
+            if start_pc is not None:
+                if pc < 0:
+                    continue
+                pc += start_pc
+            elif not is_device_pc(pc):
                 continue
             result.append((_core_type_to_core_name(core_id, core_type_id), pc))
-    except sqlite3.Error as e:
+    except (sqlite3.Error, TypeError, ValueError) as e:
         logger.warning("Failed to read instruction DB %s: %s", record_db, e)
     finally:
         con.close()

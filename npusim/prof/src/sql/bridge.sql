@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS BasicBlocks(
 );
 
 CREATE TABLE IF NOT EXISTS Functions(
-    SourceInstrAddr INTEGER NOT NULL,
+    FunctionAddr INTEGER NOT NULL,
     FunctionSize INTEGER NOT NULL,
     FunctionName VARCHAR(128) NOT NULL
 );

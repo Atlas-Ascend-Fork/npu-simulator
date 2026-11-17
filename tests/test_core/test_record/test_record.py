@@ -224,6 +224,20 @@ class Stage3ExecuteTests(unittest.TestCase):
             ok = self.r.stage3_execute()
             self.assertTrue(ok)
 
+    def test_stage3_extraction_failure_does_not_block_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.r.record_dir = Path(tmp)
+            with patch.object(self.r, "_write_user_app_marker"), patch.object(
+                self.r, "_extract_aicore_objects", return_value=False
+            ) as extract, patch.object(self.r, "_create_runtime_env", return_value=True), patch.object(
+                self.r, "_print_stage3_preamble"
+            ), patch.object(self.r, "_execute_user_app", return_value=True) as execute, patch.object(
+                _record_mod, "archive_assets", return_value=True
+            ), patch.object(_record_mod, "archive_instr_bin_glob", return_value=True):
+                self.assertTrue(self.r.stage3_execute())
+            extract.assert_called_once()
+            execute.assert_called_once()
+
     def test_stage3_failure_archives_assets(self):
         with patch.object(_record_mod, "prepare_runtime_dirs", return_value=True), patch.object(
             _record_mod, "build_execution_env"
@@ -269,6 +283,35 @@ class Stage3ExecuteTests(unittest.TestCase):
             ok = self.r.stage3_execute()
             self.assertFalse(ok, "RecordPathError should be caught in _execute_user_app")
             self.assertFalse(self.r._interrupted)
+
+
+class AicoreObjectArchiveTests(unittest.TestCase):
+    def test_binary_launch_extracts_objects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app with spaces"
+            app.write_bytes(b"\x7fELFapp")
+            r = CannsimRecord(RecordConfig(user_app=str(app), output=Path(tmp), soc_version="Ascend950"))
+            r.record_dir = Path(tmp) / "record"
+            with patch("npusim.core.public.aicore_objects.extract_device_objects") as extract:
+                r._extract_aicore_objects()
+            extract.assert_called_once_with(app.resolve(), r.record_dir / "aicore_objects")
+
+    def test_local_script_skips_extraction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "app.sh"
+            script.write_text("#!/bin/sh\necho ok\n")
+            r = CannsimRecord(RecordConfig(user_app=str(script), output=Path(tmp), soc_version="Ascend950"))
+            with patch("npusim.core.public.aicore_objects.extract_device_objects") as extract:
+                r._extract_aicore_objects()
+            extract.assert_not_called()
+
+    def test_non_binary_launches_skip_extraction(self):
+        for command in ("python3 test.py", "echo test", "/usr/bin/python3"):
+            with self.subTest(command=command):
+                r = CannsimRecord(RecordConfig(user_app=command, output=Path("/tmp/out"), soc_version="Ascend950"))
+                with patch("npusim.core.public.aicore_objects.extract_device_objects") as extract:
+                    r._extract_aicore_objects()
+                extract.assert_not_called()
 
 
 class UserAppMarkerTests(unittest.TestCase):

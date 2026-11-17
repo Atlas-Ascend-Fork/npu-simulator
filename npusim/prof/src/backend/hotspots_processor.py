@@ -31,6 +31,7 @@ from npusim.prof.src.arch_diagram.reporter import ArchDiagramReporter
 from npusim.prof.src.arch_diagram.constants import ARCH_DIAG_SUPPORTED_ARCH
 from npusim.prof.src.frontend.summary_reporter import SummaryReporter
 from npusim.prof.src.frontend.bubble_report import BubbleReporter
+from npusim.prof.src.frontend.roofline_reporter import RooflineReporter
 
 
 class HotspotsProcessor:
@@ -84,3 +85,6 @@ class HotspotsProcessor:
     def generate_summary_report(self) -> int:
         summary_reporter = SummaryReporter()
         return summary_reporter.prepare_report(self.report_dir_path)
+
+    def generate_roofline_report(self) -> int:
+        return RooflineReporter().prepare_report(self.report_dir_path)

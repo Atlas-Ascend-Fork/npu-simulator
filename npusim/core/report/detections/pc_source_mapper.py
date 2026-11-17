@@ -132,8 +132,9 @@ class PcSourceMapper:
         loc = mapper.lookup("kernel0", 0x9000d0d234)     # → SourceLoc(...)
     """
 
-    def __init__(self, object_file: Optional[str]) -> None:
+    def __init__(self, object_file: Optional[str], runtime_bases: Optional[Dict[str, int]] = None) -> None:
         self.object_file = object_file
+        self._runtime_bases = dict(runtime_bases or {})
         self._msobjdump = _find_tool("msobjdump", "tools/msobjdump/msobjdump")
         self._symbolizer = _find_tool(
             "llvm-symbolizer", "tools/msopprof/bin/llvm-symbolizer", "tools/mssanitizer/bin/llvm-symbolizer"
@@ -191,6 +192,9 @@ class PcSourceMapper:
         if not self._device_objs and self._available:
             return
         for kernel_id, pcs in device_pcs_by_kernel.items():
+            if kernel_id in self._runtime_bases:
+                self._bases[kernel_id] = self._runtime_bases[kernel_id]
+                continue
             dev_pcs = [p for p in pcs if is_device_pc(p)]
             if not dev_pcs:
                 continue
@@ -218,6 +222,8 @@ class PcSourceMapper:
         return next(iter(self._device_objs.values()))
 
     def _base_for(self, kernel_id: str, pcs: List[int]) -> int:
+        if kernel_id in self._runtime_bases:
+            return self._runtime_bases[kernel_id]
         dev_pcs = [p for p in pcs if is_device_pc(p)]
         inferred = self._infer_base_from_offsets(kernel_id, dev_pcs)
         if inferred is not None:
@@ -279,7 +285,8 @@ class PcSourceMapper:
         for pc in pcs:
             if (kernel_id, pc) in self._cache:
                 continue
-            if not is_device_pc(pc):
+            valid = pc >= base if kernel_id in self._runtime_bases else is_device_pc(pc)
+            if not valid:
                 self._cache[(kernel_id, pc)] = None
                 continue
             off = _pc_to_offset(pc, base)

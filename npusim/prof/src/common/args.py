@@ -167,6 +167,12 @@ class BiProfArgParser:
         # -- Extra modes --
         extra_args = report_mode.add_argument_group("Extra modes")
         extra_args.add_argument(
+            "--roofline",
+            action=ArgumentAction.STORE_TRUE,
+            default=False,
+            help="Persist roofline analysis and export JSON (requires function ranges from --object-file or static DB)",
+        )
+        extra_args.add_argument(
             "--smart-pipes",
             action=ArgumentAction.STORE_TRUE,
             default=False,

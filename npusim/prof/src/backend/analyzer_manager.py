@@ -23,17 +23,12 @@ from npusim.prof.src.common.biprof_context import biprof_ctx
 from npusim.prof.src.backend.analyzers.region_tracing_analyzer import (
     RegionTracingAnalyzer,
 )
+from npusim.prof.src.backend.analyzers.roofline_analyzer import RooflineAnalyzer
 from npusim.prof.src.backend.analyzers.vector_utilization_analyzer import (
     VectorUtilizationAnalyzer,
 )
-from npusim.prof.src.backend.analyzers.david.vf_simt_analyzer import (
-    Ascend950VfSimtAnalyzer,
-)
 from npusim.prof.src.backend.analyzers.instr_units_usage_analyzer import (
     InstrUnitsUsageAnalyzer,
-)
-from npusim.prof.src.backend.analyzers.david.live_registers_analyzer import (
-    Ascend950LiveRegistersAnalyzer,
 )
 from npusim.prof.src.backend.analyzers.david.basic_block_analyzer import (
     Ascend950BasicBlockAnalyzer,
@@ -47,9 +42,6 @@ from npusim.prof.src.backend.analyzers.david.shared_bank_conflicts_analyzer impo
 )
 from npusim.prof.src.backend.analyzers.david.branch_efficiency_analyzer import (
     Ascend950BranchEfficiencyAnalyzer,
-)
-from npusim.prof.src.backend.analyzers.david.warp_occupancy_analyzer import (
-    Ascend950WarpOccupancyAnalyzer,
 )
 from npusim.prof.src.backend.analyzers.david.dma_mov_align_analyzer import (
     Ascend950DMAMovAlignAnalyzer,
@@ -157,15 +149,14 @@ class AnalyzerManager(AnalyzerManagerBase):
             Ascend950FixStartTimeAnalyzer,
             InstrUnitsUsageAnalyzer,
             VectorUtilizationAnalyzer,
+            # VF SIMT metadata, live registers and warp occupancy are disabled
+            # until their legacy input parsing is adapted to the helper contract.
             SPRInstrInfoAnalyzer,
-            *([Ascend950VfSimtAnalyzer] if biprof_ctx.object_file else []),
-            *([Ascend950LiveRegistersAnalyzer] if biprof_ctx.object_file else []),
             *([Ascend950BasicBlockAnalyzer] if biprof_ctx.object_file else []),
             Ascend950MaskAnalyzer,
             Ascend950SIMTMemoryAccessAnalyzer,
             Ascend950SharedBankConflictsAnalyzer,
             Ascend950BranchEfficiencyAnalyzer,
-            *([Ascend950WarpOccupancyAnalyzer] if biprof_ctx.object_file else []),
             Ascend950DMAMovAlignAnalyzer,
             Ascend950DMAMovMultiAnalyzer,
             Ascend950DMAMovLoad2DAnalyzer,
@@ -192,6 +183,7 @@ class AnalyzerManager(AnalyzerManagerBase):
             *([Ascend950TraceBubbleAnalyzer] if biprof_ctx.bubble else []),
             *([Ascend950SIMDSamplingAnalyzer] if biprof_ctx.simd_sampling else []),
             *([VfPMUAnalyzer] if biprof_ctx.simd_perf else []),
+            *([RooflineAnalyzer] if biprof_ctx.roofline else []),
         )
         return _analyzers
 

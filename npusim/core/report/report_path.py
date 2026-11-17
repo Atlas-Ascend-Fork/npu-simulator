@@ -151,6 +151,7 @@ def _build_biprof_args(
     vf_report_json: bool = False,
     smart_pipes: bool = False,
     multi_chip: bool = False,
+    object_file: Optional[str] = None,
 ) -> List[str]:
     """构建 BiProfRunner report 子命令的完整参数列表。
 
@@ -183,6 +184,9 @@ def _build_biprof_args(
             args.append("--smart-pipes")
 
     args.extend(["--core-id", core_id or "0", "-j 8"])
+
+    if object_file:
+        args.extend(["--object-file", str(object_file)])
 
     if vf_report_json:
         args.append("--vf-report-json")

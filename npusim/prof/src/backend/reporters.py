@@ -17,6 +17,9 @@ import logging as log
 import os
 import re
 from typing import List, Optional
+from pathlib import Path
+
+from npusim.core.public.aicore_objects import DeviceObjectResolver
 
 import npusim.prof.src.common.utils as utils
 from npusim.core.public.comm import print_error, print_info
@@ -107,6 +110,9 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
 
     def _process_one_db(self, input_db: str, index: int) -> int:
         ret = 0
+        saved_context = {
+            key: biprof_ctx.__dict__[key] for key in ("object_file", "kernel_name") if key in biprof_ctx.__dict__
+        }
         database_handler.connect(input_db)
         try:
             # Warmup / 空 kernel 的 DB 没有任何执行指令（如 VF profiling 样例的
@@ -131,11 +137,38 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
             report_kernel_name = self._safe_report_component(kernel_name)
             report_dir_name = f"{launch_id:04d}_{report_kernel_name}_reports"
 
-            object_file = biprof_ctx.object_file
+            trace = database_handler.execute(
+                "SELECT DISTINCT SourceInstrAddr, SourceInstrEncoding FROM ExecutedInstructions"
+            ).fetchall()
+            selected = self._object_resolver.select(kernel_name, executed_instructions=trace)
+            object_file = selected.path if selected else None
+            device_kernel = selected.kernel if selected else kernel_name
+            # Re-reporting a DB must not reuse a previous object or duplicate its
+            # source rows. These tables are derived, never the recorded trace.
+            for table in (
+                "CallStackIDs",
+                "BasicBlocks",
+                "Functions",
+                "SourceInstructions",
+                "DebugInfo",
+                "SourceLines",
+                "SourceFiles",
+                "Sections",
+            ):
+                database_handler.execute(f"DELETE FROM {table}")
+            database_handler.execute(
+                "DELETE FROM sqlite_sequence WHERE name IN ('Sections', 'SourceFiles', 'SourceLines', 'DebugInfo')"
+            )
+            biprof_ctx.object_file = object_file
+            biprof_ctx.kernel_name = device_kernel
+            database_handler.execute("DELETE FROM KernelInfo WHERE KernelInfoAttr='object_entry_pc'")
             if object_file:
+                database_handler.execute(
+                    "INSERT INTO KernelInfo (KernelInfoAttr, KernelInfoVal) VALUES ('object_entry_pc', ?)",
+                    (selected.entry_pc,),
+                )
                 obj_proc = ObjectProcessor(self._arch, self._output_dir, object_file)
-                functions, _ = obj_proc.read_object_functions()
-                obj_data = obj_proc.read(kernel_name)
+                obj_data, functions = obj_proc.read_for_launch(selected, executed_pcs=sorted({row[0] for row in trace}))
                 with StageReporter("Save processed object info"):
                     BackendDBManager.save_processed_data(obj_data, functions)
 
@@ -173,17 +206,29 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
             ret += processor.generate_arch_diagram()
 
             ret += processor.generate_summary_report()
+            if biprof_ctx.roofline:
+                ret += processor.generate_roofline_report()
         finally:
+            for key in ("object_file", "kernel_name"):
+                biprof_ctx.__dict__.pop(key, None)
+            biprof_ctx.__dict__.update(saved_context)
             database_handler.disconnect()
         return ret
 
     def process(self) -> int:
         ret = 0
         print_info(f"Processing {len(self._input_dbs)} contract DB file(s).")
-        for index, input_db in enumerate(self._input_dbs):
-            if index > 0:
-                StageReporter.separate()
-            ret += self._process_one_db(input_db, index)
+        source = Path(self._input_db)
+        self._object_resolver = DeviceObjectResolver(
+            source.parent if source.is_file() else source, biprof_ctx.object_file
+        )
+        try:
+            for index, input_db in enumerate(self._input_dbs):
+                if index > 0:
+                    StageReporter.separate()
+                ret += self._process_one_db(input_db, index)
+        finally:
+            self._object_resolver.close()
 
         if not biprof_ctx.save_tmp_files:
             self.clear_tmp_files()

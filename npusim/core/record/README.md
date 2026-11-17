@@ -82,11 +82,17 @@ flowchart TD
 ### artifacts — 产物归档
 
 - **`archive_assets(record_dir, asset_names, asset_roots, on_fail_delete)`** — 将仿真产物从运行目录移至 `record_dir`；若 `record_dir` 不可用且 `on_fail_delete=True`，则删除残留产物
+- **AI Core object 自动归档** — 本地 ELF binary 启动且环境中存在 `msobjdump` 时，record 会将设备 ELF 提取到 `record/aicore_objects/`；提取失败只告警，不阻断仿真。Python、shell command 和非 ELF script 暂不提取。
+- Plain `"/path/to/ELF --args"` invocations (including CSL) also use binary mode. Shell expressions, interpreter commands and scripts retain their existing launch mode.
 - **`cleanup_internal_dirs(record_dir)`** — 收尾清理工具：从归档目录移除 `log/`, `log_ca/`, `run_log/`；主录制流程在 summary / auto-report 后自动调用
 
 ### auto_report — 自动报告
 
 - **`generate_auto_report(record_dir, target_dir, gen_report, core_id, object_file)`** — 在录制成功后调用 `report.generate_report`；当 `gen_report == "vf"` 时启用 `export_vf`
+- 未显式传入 `--object-file` 时，prof 按当前 kernel 的精确符号从 `aicore_objects/` 选择设备 ELF；支持一个 ELF 包含多个 kernel 和多个 ELF。缺失/歧义不误选，关闭该 kernel 的 object-dependent 分析。旧目录的 `.user-app` 仅作为提取设备 ELF 的来源，宿主 ARM ELF 不直接交给 prof。
+- With recorded instruction encodings, selection verifies every executed PC/code pair against ELF disassembly. Runtime/debug names can identify an inlined helper instead of the entry symbol; when names differ, selection requires a unique object and executed global entry group (`_mix_aic`/`_mix_aiv` form one group). Missing/conflicting encodings, mismatched code and ambiguous candidates disable object-dependent analysis. Helper 128-bit SIMT word order and zero-padded 32-bit encodings are normalized before comparison.
+- Recorded PCs are relative to the launched entry, which may be nonzero in a shared ELF. Selection verifies `record_pc + entry_pc`; object import translates the selected instructions, functions and basic blocks back to launch-relative addresses once. `KernelInfo.object_entry_pc` preserves the offset for ELF/DWARF queries. Recorded address fields are not rewritten.
+- 提取有超时上限，失败/不完整产物不自动使用，不覆盖已有归档。复制 record 目录后不依赖原 app。此特性只提供 object 自动归档与分析入口，不新增 Roofline 算法；源码映射仍需 DWARF。当前 detection 的 PC 标识只包含 core、不包含 kernel launch，多 kernel 归档场景会告警跳过 detection 源码行标注（检测仍执行）；prof 的逐 kernel object 分析不受影响。
 
 ### presentation — 终端展示
 

@@ -27,18 +27,36 @@ from typing import List, Optional, Tuple, Union
 # archive 标签里允许出现的字符：字母数字、点号、下划线、加号、连字符
 _ARCHIVE_LABEL_SAFE = re.compile(r"[^A-Za-z0-9._+-]+")
 # 解释器/wrapper：当 shell 命令的第一个 token 是这些时，归档标签优先取下一个非选项 token
-_INTERPRETER_TOKENS = frozenset({
-    "bash", "sh", "zsh", "ksh",
-    "python", "python2", "python3",
-    "env", "pytest",
-})
-_SHELL_TOKENS = frozenset({
-    "bash", "sh", "zsh", "ksh",
-})
+_INTERPRETER_TOKENS = frozenset(
+    {
+        "bash",
+        "sh",
+        "zsh",
+        "ksh",
+        "python",
+        "python2",
+        "python3",
+        "env",
+        "pytest",
+    }
+)
+_SHELL_TOKENS = frozenset(
+    {
+        "bash",
+        "sh",
+        "zsh",
+        "ksh",
+    }
+)
 # Python 相关命令前缀：当 shell 命令首 token 的 basename 命中时，需注入 TASK_QUEUE_ENABLE=0
-_PYTHON_TOKENS = frozenset({
-    "python", "python2", "python3", "pytest",
-})
+_PYTHON_TOKENS = frozenset(
+    {
+        "python",
+        "python2",
+        "python3",
+        "pytest",
+    }
+)
 _SHELL_METACHARS = frozenset("|&;<>()$`")
 
 
@@ -184,9 +202,7 @@ def _shell_script_index(tokens: List[str]) -> Optional[int]:
     return None
 
 
-def _shell_script_command(
-    raw: str, tokens: List[str], user_option: str, cwd: Path
-) -> Optional[LaunchSpec]:
+def _shell_script_command(raw: str, tokens: List[str], user_option: str, cwd: Path) -> Optional[LaunchSpec]:
     script_idx = _shell_script_index(tokens)
     if script_idx is None:
         return None
@@ -277,6 +293,13 @@ def build_launch_spec(raw_user_app: Union[str, Path], user_option: str, cwd: Pat
 
     tokens = _split_command(raw)
     first = Path(tokens[0]).name if tokens else ""
+    if tokens and _looks_like_path(tokens[0]) and not _has_shell_syntax(raw):
+        executable = _resolve_user_path(tokens[0], cwd)
+        if executable.is_file() and _is_elf(executable) and first not in _INTERPRETER_TOKENS:
+            # Launchers pass '/path/app --args' as one user_app string. Keep a
+            # plain ELF invocation in binary mode so recording archives its code.
+            options = _append_user_option_to_command(" ".join(shlex.quote(token) for token in tokens[1:]), user_option)
+            return _build_file_launch_spec(raw, executable, options)
     if (
         len(tokens) > 1
         or first in _INTERPRETER_TOKENS

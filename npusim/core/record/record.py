@@ -20,6 +20,7 @@ cannsim record 用户可在无卡环境下执行仿真
 
 import json
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -263,6 +264,7 @@ class CannsimRecord:
         # 仅本地文件模式（binary/script）记录；command 模式（如 "python xxx"）
         # 无单一可执行 ELF，留空由用户自行指定 --object-file。
         self._write_user_app_marker()
+        self._extract_aicore_objects()
 
         argv = self.launch.argv
         app_cwd = self.launch.cwd
@@ -298,6 +300,16 @@ class CannsimRecord:
             return False
 
     # --------------- 运行时目录 & USER_APP 执行 ---------------
+
+    def _extract_aicore_objects(self) -> None:
+        """Archive device code only for a direct local binary launch."""
+        if self.launch.kind != "binary" or self.launch.is_python or self.launch.executable_path is None:
+            return
+        if re.fullmatch(r"python(?:\d+(?:\.\d+)*)?", self.launch.executable_path.name):
+            return
+        from npusim.core.public.aicore_objects import extract_device_objects
+
+        extract_device_objects(self.launch.executable_path, self.record_dir / "aicore_objects")
 
     def _write_user_app_marker(self) -> None:
         """把用户可执行文件的绝对路径写进 record 目录下的 ``.user-app``。

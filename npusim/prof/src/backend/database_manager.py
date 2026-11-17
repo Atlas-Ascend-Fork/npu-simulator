@@ -130,7 +130,7 @@ class BackendDBManager:
         database_handler.executemany(
             """
         INSERT INTO Functions
-        (SourceInstrAddr, FunctionSize, FunctionName)
+        (FunctionAddr, FunctionSize, FunctionName)
         VALUES
         (?, ?, ?)
         """,

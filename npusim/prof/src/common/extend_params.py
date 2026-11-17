@@ -301,7 +301,8 @@ class ExtendParams:
 
     @property
     def access_btype(self) -> Optional[str]:
-        return self._data.get("access_btype")
+        value = self._data.get("access_btype")
+        return value if value is not None else self.access_type
 
     @property
     def prdct_mask(self) -> Optional[int]:

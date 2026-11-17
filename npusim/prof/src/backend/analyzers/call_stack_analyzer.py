@@ -22,6 +22,8 @@ from collections import defaultdict
 import npusim.prof.src.common.utils as utils
 from npusim.prof.src.backend.database import database_handler
 from npusim.prof.src.backend.analyzers.base.analyzer_base import IAnalyzer
+from npusim.core.public.aicore_objects import DeviceObject
+from npusim.prof.src.common.biprof_context import biprof_ctx
 import os
 import json
 
@@ -81,8 +83,8 @@ class DatabaseManager:
             FROM Functions
             INNER JOIN AsmMetrics
             ON AsmMetrics.PC
-            BETWEEN Functions.SourceInstrAddr AND
-            (Functions.SourceInstrAddr + Functions.FunctionSize - 1)
+            BETWEEN Functions.FunctionAddr AND
+            (Functions.FunctionAddr + Functions.FunctionSize - 1)
         """
         res = defaultdict(list)
         for i in database_handler.execute(msg).fetchall():
@@ -178,7 +180,11 @@ class CallStackAnalyzer(IAnalyzer):
     def __init__(self) -> None:
         super().__init__()
         self.kernel_name = database_handler.get_kernel_name()
-        self.object_path = database_handler.get_object_path()
+        self.object_path = biprof_ctx.object_file or database_handler.get_object_path()
+        entry = database_handler.execute(
+            "SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr='object_entry_pc'"
+        ).fetchone()
+        self.object = DeviceObject(self.object_path, self.kernel_name, int(entry[0]) if entry else 0)
         self.files = DatabaseManager.get_source_files()
         self.file_id = max(self.files.values(), default=0) + 1
 
@@ -219,7 +225,7 @@ class CallStackAnalyzer(IAnalyzer):
             "-i",
             f"-e={self.object_path}",
         ]
-        offsets = [hex(i) for i in filter(None, self.current_instrs.keys())]
+        offsets = [hex(self.object.elf_pc(pc)) for pc in self.current_instrs]
         if not offsets:
             return []
         cmd += offsets
@@ -273,7 +279,7 @@ class CallStackAnalyzer(IAnalyzer):
         #   Walk frames, create Function nodes, add caller->callee edges.
         #   Last frame gets the kernel's top-level name.
         #   Track self-time per function at the leaf of each stack.
-        pc = int(stack["Address"], 16)
+        pc = self.object.record_pc(int(stack["Address"], 16))
         instr_exe_count = self.current_instrs[pc].exec_count
         instr_exe_time = self.current_instrs[pc].exec_time
 

@@ -187,32 +187,16 @@ def _find_chip_instr_bins(export_abs: Path) -> List[Path]:
 
 
 def _resolve_object_file(export_abs: Path, explicit: Optional[str]) -> Optional[str]:
-    """解析用于 PC→源码行映射的目标文件路径。
-
-    优先级：显式 ``--object-file`` > record 目录里的 ``.user-app`` 标记。
-    ``.user-app`` 由 ``npusim record`` 写入（仅本地 binary/script 模式），记录用户
-    可执行文件的绝对路径。这样 report 时即使不传 ``--object-file`` 也能自动回退，
-    避免要求用户重复指定同一个产物。
-
-    export 可能是 run 目录（含 ``record/`` 子目录）或 record 目录本身（含 instr.bin），
-    两种布局都查找。
-    """
+    """Preserve the source-mapper legacy host input; prof resolves per kernel."""
     if explicit:
         return explicit
-    candidates = [export_abs, export_abs / "record"]
-    for d in candidates:
-        marker = d / ".user-app"
-        if marker.is_file():
-            try:
-                path = marker.read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if not path:
-                continue
-            if not Path(path).is_file():
-                print_warn(f"Recorded user app no longer exists; ignoring .user-app entry: {path}")
-                continue
-            return path
+    for base in (export_abs, export_abs / "record"):
+        try:
+            path = (base / ".user-app").read_text(encoding="utf-8").strip()
+            if path and Path(path).is_file():
+                return path
+        except (OSError, ValueError):
+            continue
     return None
 
 
@@ -331,8 +315,68 @@ def _has_record_db(export_abs: Path) -> bool:
 def _build_detection_mapper(export_abs: Path, output_abs: Path, object_file: Optional[str]):
     """加载或构建各检测共用的 PC→源码映射器。"""
     cache_path = output_abs / "pc_source_map.json"
-    cache_object = _cached_object_file(cache_path, object_file)
+    from npusim.core.public.aicore_objects import DeviceObjectResolver
+    from npusim.core.report.detections.pc_source_mapper import PcSourceMapper
+
     device_pcs_by_kernel = _collect_source_pcs(export_abs)
+    db_input = _find_cannsim_helper_db_input(export_abs)
+    if db_input and (
+        object_file
+        or any(
+            (base / "aicore_objects").exists() or (base / "aicore_objects").is_symlink()
+            for base in (export_abs, export_abs / "record")
+        )
+    ):
+        # Detection IDs currently identify cores, not launches. Do not attribute
+        # PCs from several kernels to an arbitrary object or reuse a stale cache.
+        dbs = [db_input] if db_input and db_input.is_file() else sorted(db_input.glob("*.db")) if db_input else []
+        names = set()
+        start_pcs = set()
+        trace = []
+        trace_valid = True
+        for db in dbs:
+            try:
+                con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+                try:
+                    rows = con.execute("SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr = 'name'")
+                    names.update(str(row[0]) for row in rows)
+                    start = con.execute(
+                        "SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr='start_pc'"
+                    ).fetchone()
+                    if start is None:
+                        trace_valid = False
+                    else:
+                        start_pcs.add(int(start[0]))
+                    trace.extend(
+                        con.execute(
+                            "SELECT DISTINCT SourceInstrAddr, SourceInstrEncoding FROM ExecutedInstructions"
+                        ).fetchall()
+                    )
+                finally:
+                    con.close()
+            except (sqlite3.Error, TypeError, ValueError):
+                trace_valid = False
+        resolver = DeviceObjectResolver(export_abs, object_file)
+        try:
+            selected = (
+                resolver.select(next(iter(names)), executed_instructions=trace)
+                if len(names) == 1 and len(start_pcs) == 1 and trace_valid
+                else None
+            )
+        finally:
+            resolver.close()
+        if selected:
+            # Runtime entry and ELF entry need not be page-aligned or zero.
+            elf_runtime_base = next(iter(start_pcs)) - selected.entry_pc
+            mapper = PcSourceMapper(
+                selected.path, runtime_bases={core: elf_runtime_base for core in device_pcs_by_kernel}
+            )
+            mapper._device_objs = {core: Path(selected.path) for core in device_pcs_by_kernel}
+            mapper.prebuild(device_pcs_by_kernel)
+            return mapper
+        print_warn("Detection source mapping skipped: per-launch kernel identity is unavailable or ambiguous")
+        return PcSourceMapper(None)
+    cache_object = _cached_object_file(cache_path, _resolve_object_file(export_abs, object_file))
     return _prepare_source_mapper(cache_path, cache_object, device_pcs_by_kernel)
 
 
@@ -468,6 +512,7 @@ def generate_report(
         export_vf=export_vf,
         smart_pipes=smart_pipes,
         multi_chip=multi_chip,
+        object_file=object_file,
     )
 
     # ⑥ 多核流水图合并（仅单卡模式；多卡模式由 generate_multi_chip_report
@@ -548,6 +593,7 @@ def _run_report_backend(
     export_vf: bool,
     smart_pipes: bool,
     multi_chip: bool,
+    object_file: Optional[str] = None,
 ) -> bool:
     """构建 BiProf 参数并执行报告后处理流水。"""
     # ④ 构建参数 → 执行 BiProfRunner
@@ -558,6 +604,7 @@ def _run_report_backend(
         vf_report_json=export_vf,
         smart_pipes=smart_pipes,
         multi_chip=multi_chip,
+        object_file=object_file,
     )
     backend, success = _REPORT_CHAIN.execute(
         biprof_args,
@@ -785,10 +832,6 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
         return False
 
     export_abs = Path(export).resolve()
-
-    # 未显式指定 --object-file 时，回退到 record 目录里 .user-app 标记记录的
-    # 用户可执行文件路径（由 npusim record 写入），用于 PC→源码行映射。
-    object_file = _resolve_object_file(export_abs, object_file)
 
     if export_abs.exists() and _find_chip_instr_bins(export_abs):
         return generate_multi_chip_report(

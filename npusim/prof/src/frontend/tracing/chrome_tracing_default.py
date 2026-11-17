@@ -1356,7 +1356,14 @@ class InstrTraceBuilder(IBaseTraceBuilder):
             instr_attrs.extend(
                 [
                     ("conflict_count", instr["ConflictCount"]),
-                    ("conflict_instructions", instr["ConflictInstrs"]),
+                    (
+                        "conflict_instructions",
+                        re.sub(
+                            r"\b[0-9]+\b",
+                            lambda match: str(decompose_instr_id(int(match.group()))[0]),
+                            instr["ConflictInstrs"],
+                        ),
+                    ),
                 ]
             )
         if instr["Id"] in self.sync_wait_times_map:

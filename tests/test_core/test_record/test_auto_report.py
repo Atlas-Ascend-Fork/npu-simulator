@@ -40,6 +40,15 @@ class AutoReportTests(unittest.TestCase):
             mock_report.assert_called_once()
             _, kwargs = mock_report.call_args
             self.assertEqual(kwargs["core_id"], "0")
+            self.assertEqual(kwargs["export"], str(record_dir))
+            self.assertIsNone(kwargs["object_file"])
+
+    @patch.object(_auto_report_mod, "report", return_value=True)
+    def test_explicit_object_forwarded(self, mock_report):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertTrue(generate_auto_report(root, root, "true", "0", "explicit.o"))
+            self.assertEqual(mock_report.call_args[1]["object_file"], "explicit.o")
 
     @patch.object(_auto_report_mod, "report", return_value=True)
     def test_generate_auto_report_vf_sets_export_vf(self, mock_report):

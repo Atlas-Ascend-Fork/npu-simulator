@@ -72,6 +72,10 @@ DROP TABLE IF EXISTS VfPMUSynthValuesPerSubcore;
 DROP TABLE IF EXISTS VfPMUSynthValuesPerVf;
 DROP VIEW IF EXISTS VfPMUSynthViewPerSubcore;
 DROP VIEW IF EXISTS VfPMUSynthViewPerVf;
+DROP TABLE IF EXISTS RooflineMetadata;
+DROP TABLE IF EXISTS RooflinePoints;
+DROP TABLE IF EXISTS RooflineComputePeaks;
+DROP TABLE IF EXISTS RooflineBandwidthPeaks;
 
 CREATE TABLE AnalysisState(
     AnalysisName VARCHAR(70) NOT NULL,
@@ -644,4 +648,50 @@ CREATE TABLE TraceBubbleSummary(
     BubbleCount INTEGER NOT NULL,
     TopBottleneck TEXT,
     SubtypeSummary TEXT
+);
+
+-- UI-independent roofline analysis snapshot. Values follow BiProf binary-GB metrics and full-chip references.
+
+CREATE TABLE RooflineMetadata(
+    AnalysisId INTEGER PRIMARY KEY CHECK (AnalysisId = 1),
+    Architecture TEXT NOT NULL,
+    FrequencyGHz REAL NOT NULL CHECK (FrequencyGHz > 0),
+    ReferenceFrequencyGHz REAL NOT NULL CHECK (ReferenceFrequencyGHz > 0),
+    ActiveCoreCount INTEGER NOT NULL,
+    MaxCoreCount INTEGER NOT NULL,
+    ActiveAicCount INTEGER NOT NULL,
+    ActiveAivCount INTEGER NOT NULL
+);
+
+CREATE TABLE RooflinePoints(
+    FunctionPC INTEGER NOT NULL,
+    FunctionSize INTEGER NOT NULL,
+    FunctionName TEXT NOT NULL,
+    ExecutionMode TEXT NOT NULL,
+    Unit TEXT NOT NULL,
+    MemoryLevel TEXT NOT NULL,
+    ExecutionCount INTEGER NOT NULL,
+    DurationTicks INTEGER NOT NULL CHECK (DurationTicks > 0),
+    FpOperations INTEGER NOT NULL CHECK (FpOperations >= 0),
+    IntegerOperations INTEGER NOT NULL CHECK (IntegerOperations >= 0),
+    TotalOperations INTEGER NOT NULL CHECK (TotalOperations = FpOperations + IntegerOperations AND TotalOperations > 0),
+    ProcessedBytes INTEGER NOT NULL CHECK (ProcessedBytes > 0),
+    ArithmeticIntensity REAL NOT NULL,
+    ThroughputGBs REAL NOT NULL,
+    PerformanceGFlops REAL NOT NULL,
+    PRIMARY KEY (FunctionPC, ExecutionMode, MemoryLevel)
+);
+
+CREATE TABLE RooflineComputePeaks(
+    Unit TEXT NOT NULL,
+    DataType TEXT NOT NULL,
+    PeakGFlops REAL NOT NULL,
+    PRIMARY KEY (Unit, DataType)
+);
+
+CREATE TABLE RooflineBandwidthPeaks(
+    Unit TEXT NOT NULL,
+    MemoryLevel TEXT NOT NULL,
+    PeakGBs REAL NOT NULL,
+    PRIMARY KEY (Unit, MemoryLevel)
 );

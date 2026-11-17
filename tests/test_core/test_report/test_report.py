@@ -66,6 +66,48 @@ FallbackChain = strategy_impl_mod.FallbackChain
 
 
 class ReportTests(unittest.TestCase):
+    def test_explicit_object_file_reaches_prof_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_helper_db(root)
+            chain = _CaptureArgsChain()
+            explicit = str(root / "explicit with spaces.o")
+            with patch.object(report_mod, "_REPORT_CHAIN", chain), patch.object(
+                report_mod, "_run_detections", return_value=True
+            ):
+                report_mod.generate_report(str(root), object_file=explicit)
+            index = chain.biprof_args.index("--object-file")
+            self.assertEqual(chain.biprof_args[index + 1], explicit)
+
+    def test_report_entry_passes_explicit_without_global_resolution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_helper_db(root)
+            with patch.object(report_mod, "generate_report", return_value=True) as generate:
+                self.assertTrue(report_mod.report(str(root), None, "0", object_file="explicit.o"))
+            self.assertEqual(generate.call_args[1]["object_file"], "explicit.o")
+
+    def test_multi_kernel_archive_disables_ambiguous_detection_mapping(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = _write_helper_db(root)
+            with sqlite3.connect(db) as con:
+                con.executemany("INSERT INTO KernelInfo VALUES ('name', ?)", [("alpha",), ("beta",)])
+            (root / "record" / "aicore_objects").mkdir()
+            with patch.object(report_mod, "_collect_source_pcs", return_value={}):
+                mapper = report_mod._build_detection_mapper(root, root, None)
+            self.assertFalse(mapper.available)
+            mapper.close()
+
+    def test_legacy_marker_preserves_real_newline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = root / "app"
+            app.write_bytes(b"host")
+            (root / ".user-app").write_text(str(app) + "\n", encoding="utf-8")
+            self.assertEqual(report_mod._resolve_object_file(root, None), str(app))
+            self.assertEqual(report_mod._resolve_object_file(root, "explicit.o"), "explicit.o")
+
     def test_report_rejects_wrong_contract(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)

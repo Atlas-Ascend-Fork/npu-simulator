@@ -154,6 +154,7 @@ class ElfObjectReader:
     def __init__(self, arch: ArchName, workspace: str) -> None:
         self.arch = arch
         self.workspace = workspace
+        self._local_aliases: Dict[str, Set[str]] = {}
 
     @classmethod
     def _clean_instruction_text(cls, text: str) -> str:
@@ -191,13 +192,14 @@ class ElfObjectReader:
         sections: List[Section] = []
         source_files_map: OrderedDict[SourceFile, int] = OrderedDict()
         source_lines_map: OrderedDict[SourceLine, int] = OrderedDict()
+        source_file_lines: Dict[str, List[str]] = {}
         instructions: List[Instruction] = []
         debug_info: List[DebugInfo] = []
         instrs_to_debug_mapping: InstructionsToDebugMapping = {}
 
         cur_qtype_value: Optional[int] = None
 
-        for i, line in enumerate(objdump_lines):
+        for line in objdump_lines:
             # Section name
             match = ObjdumpPatterns.section_pattern.fullmatch(line)
             if match:
@@ -218,10 +220,19 @@ class ElfObjectReader:
                 if file_id is None:
                     file_id = len(source_files_map)
                     source_files_map[SourceFile(file_path)] = file_id
-                if os.path.isfile(file_path):
-                    source_line = objdump_lines[i + 1].strip()
-                    if source_line.startswith(";"):
-                        source_line = source_line[1:].strip()
+                # Repeated DWARF locations are often followed immediately by
+                # assembly, not source text. Read the actual numbered line.
+                if file_path not in source_file_lines:
+                    source_file_lines[file_path] = []
+                    if os.path.isfile(file_path):
+                        try:
+                            with open(file_path, encoding="utf-8", errors="replace") as source_file:
+                                source_file_lines[file_path] = source_file.read().splitlines()
+                        except OSError as error:
+                            log.warning("Cannot read source file %s: %s", file_path, error)
+                file_lines = source_file_lines[file_path]
+                if 0 < line_num <= len(file_lines):
+                    source_line = file_lines[line_num - 1].strip()
                     line_id = source_lines_map.get(SourceLine(source_line), None)
                     if line_id is None:
                         line_id = len(source_lines_map)
@@ -425,7 +436,8 @@ class ElfObjectReader:
     def _use_hidumper_cached(self, hidumper_path: str, obj_path: str) -> List[str]:
         lines: List[str] = []
 
-        with tfs.open_auto("hidumper_output", key=obj_path) as f:
+        cache_key = repr((obj_path, biprof_ctx.kernel_name, biprof_ctx.force_disassembly))
+        with tfs.open_auto("hidumper_output", key=cache_key) as f:
             # No cached output: write
             if "w" in f.mode:
                 hidumper = Tool(hidumper_path)
@@ -467,7 +479,11 @@ class ElfObjectReader:
         ret = objdump.run(cmd, self.workspace, capture_output=True)
         ret.check_returncode()
 
+        aliases = set()
         for line in io.StringIO(ret.stdout):
+            fields = line.split()
+            if fields and ".text" in fields and fields[-1].endswith("$local"):
+                aliases.add(fields[-1])
             match = ObjdumpPatterns.sym_table_func_pattern.match(line)
             if match is not None:
                 addr = int(match["addr"], 16)
@@ -484,6 +500,7 @@ class ElfObjectReader:
                         is_kernel=is_global,
                     )
                     functions_info.append(function_info)
+        self._local_aliases[obj_path] = aliases
         return functions_info
 
     # Uses hidumper
@@ -581,7 +598,9 @@ class ElfObjectReader:
         return bytes
 
     # Uses llvm-objdump by default (if hidumper_path is not specified)
-    def read_as_text(self, obj_path: str, hidumper_path: Optional[str] = None) -> List[str]:
+    def read_as_text(
+        self, obj_path: str, hidumper_path: Optional[str] = None, additional_symbols: Optional[List[str]] = None
+    ) -> List[str]:
         if hidumper_path:
             lines = self._use_hidumper_cached(hidumper_path, obj_path)
         else:
@@ -589,16 +608,26 @@ class ElfObjectReader:
             cmd = ["-d", "--source", "--line-numbers"]
             if biprof_ctx.kernel_name:
                 kernel_name = str(biprof_ctx.kernel_name)
-                cmd.append(f"--disassemble-symbols={kernel_name}")
-                cmd.append(f"--disassemble-symbols={kernel_name}_mix_aic")
-                cmd.append(f"--disassemble-symbols={kernel_name}_mix_aiv")
+                symbols = [kernel_name, kernel_name + "_mix_aic", kernel_name + "_mix_aiv"]
+                # VF/SIMT bodies are separate symbols, not recursively emitted
+                # by objdump when only the kernel entry is selected.
+                symbols.extend(additional_symbols or [])
+                if obj_path not in self._local_aliases:
+                    self.read_functions_info(obj_path)
+                # Some compiler versions print only a non-function $local
+                # alias at the kernel's address. Selecting the global name
+                # alone then silently omits the scalar entry body.
+                symbols.extend(
+                    name + "$local" for name in list(symbols) if name + "$local" in self._local_aliases[obj_path]
+                )
+                cmd.extend("--disassemble-symbols=" + name for name in dict.fromkeys(symbols))
             cmd.append(obj_path)
             res = objdump.run(cmd, self.workspace, capture_output=True)
             res.check_returncode()
             lines = res.stdout.splitlines()
         return lines
 
-    def read(self, obj_path: str, kernel_name: str) -> ProcessedObjData:
+    def read(self, obj_path: str, kernel_name: str, additional_symbols: Optional[List[str]] = None) -> ProcessedObjData:
         hidumper_path = get_hidumper_path()
         hidumper_lines, objdump_lines = None, None
         # Case 1: hidumper is available
@@ -607,7 +636,7 @@ class ElfObjectReader:
                 hidumper_lines = self.read_as_text(obj_path, hidumper_path)
                 assert hidumper_lines, "Disassembly info is not found"
             with StageReporter("Retrieve source line mapping"):
-                objdump_lines = self.read_as_text(obj_path, hidumper_path=None)
+                objdump_lines = self.read_as_text(obj_path, hidumper_path=None, additional_symbols=additional_symbols)
                 if not objdump_lines:
                     log.warning("Source lines info is not found")
             with StageReporter("Process assembly lines"):
@@ -615,7 +644,7 @@ class ElfObjectReader:
         # Case 2: only llvm-objdump is available
         else:
             with StageReporter("Disassemble the kernel & retrieve source line mapping"):
-                objdump_lines = self.read_as_text(obj_path, hidumper_path=None)
+                objdump_lines = self.read_as_text(obj_path, hidumper_path=None, additional_symbols=additional_symbols)
                 assert objdump_lines, "Disassembly info is not found"
             with StageReporter("Process assembly lines"):
                 processed_obj_info = self._process_obj_default(objdump_lines)
