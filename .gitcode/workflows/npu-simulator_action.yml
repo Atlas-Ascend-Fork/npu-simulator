@@ -45,6 +45,9 @@ stages:
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:k8s_v1.1006
       JOB_pre:
+        permissions:
+          repository: read
+          id-token: write
         name: Test_PreBuild
         uses: cann/.gitcode/.gitcode/workflows/pre_action.yml@master
     pre:
@@ -54,12 +57,18 @@ stages:
     name: CodeCheck
     jobs:
       JOB_codecheck:
+        permissions:
+          repository: read
+          id-token: write
         name: CodeCheck
         uses: cann/.gitcode/.gitcode/workflows/codecheck_action.yml@master
         with:
           precommit_image_version: ${{ jobs.JOB_image.outputs.precommit }}
           codecheck_image_version: ${{ jobs.JOB_image.outputs.codecheck }}
       JOB_Compile_Ascend_X86_ubuntu24:
+        permissions:
+          repository: read
+          id-token: write
         name: Compile_Ascend_X86_ubuntu24
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -68,6 +77,9 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_ubuntu24 }}
           arch: 'x64'
       JOB_Compile_Ascend_ARM_ubuntu24:
+        permissions:
+          repository: read
+          id-token: write
         name: Compile_Ascend_ARM_ubuntu24
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -76,12 +88,18 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_ubuntu24 }}
           arch: 'arm64'
       JOB_py37_compat:
+        permissions:
+          repository: read
+          id-token: write
         name: py37_compat
         uses: .gitcode/workflows/py37_compat_action.yml
         with:
           task_name: 'codecheck_py37_compat'
           image_version: ${{ jobs.JOB_image.outputs.UT_Test }}
       JOB_scan:
+        permissions:
+          repository: read
+          id-token: write
         name: scan
         uses: .gitcode/workflows/scan_action.yml
         with:
@@ -94,6 +112,9 @@ stages:
     name: UT
     jobs:
       JOB_UT_Test:
+        permissions:
+          repository: read
+          id-token: write
         name: UT_Test
         uses: .gitcode/workflows/llt_action.yml
         with:
@@ -107,6 +128,9 @@ stages:
     name: PreSmoke
     jobs:
       PreSmoke_x86:
+        permissions:
+          repository: read
+          id-token: write
         name: PreSmoke_x86
         steps:
           -
@@ -117,13 +141,20 @@ stages:
               allow-unsafe-pr-checkout: true
               ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
           -
+            name: oidc_auth
+            uses: huaweicloud-oidc-auth
+            with:
+              audience: ${{ secrets.audience }}
+              agency_urn: ${{ secrets.agency_urn }}
+              provider_urn: ${{ secrets.provider_urn }}
+              region: cn-north-4
+              duration: 3600
+          -
             name: download
             uses: obs-download
             with:
               endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
               bucket: "ascend-ci"
-              access-key: ${{ secrets.AK }}
-              secret-key: ${{ secrets.SK }}
               key: |
                 ${{ env.obs_path }}/pr_filelist.txt
                 ${{ env.obs_path }}/pr_filelist_mod.txt
@@ -151,8 +182,6 @@ stages:
             with:
               endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
               bucket: "ascend-ci"
-              access-key: ${{ secrets.AK }}
-              secret-key: ${{ secrets.SK }}
               artifact-path: "${{ steps.process_checkout.outputs.path }}/slog*.tar.gz"
               object-prefix: ${obs_smoke_path}/plog/
 
@@ -161,6 +190,9 @@ stages:
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.Pre_smoke }}
       PreSmoke_arm:
+        permissions:
+          repository: read
+          id-token: write
         name: PreSmoke_arm
         steps:
           -
@@ -171,13 +203,20 @@ stages:
               allow-unsafe-pr-checkout: true
               ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
           -
+            name: oidc_auth
+            uses: huaweicloud-oidc-auth
+            with:
+              audience: ${{ secrets.audience }}
+              agency_urn: ${{ secrets.agency_urn }}
+              provider_urn: ${{ secrets.provider_urn }}
+              region: cn-north-4
+              duration: 3600
+          -
             name: download
             uses: obs-download
             with:
               endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
               bucket: "ascend-ci"
-              access-key: ${{ secrets.AK }}
-              secret-key: ${{ secrets.SK }}
               key: |
                 ${{ env.obs_path }}/pr_filelist.txt
                 ${{ env.obs_path }}/pr_filelist_mod.txt
@@ -205,8 +244,6 @@ stages:
             with:
               endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
               bucket: "ascend-ci"
-              access-key: ${{ secrets.AK }}
-              secret-key: ${{ secrets.SK }}
               artifact-path: "${{ steps.process_checkout.outputs.path }}/slog*.tar.gz"
               object-prefix: ${obs_smoke_path}/plog/
 
