@@ -15,11 +15,16 @@
 
 import argparse
 import os
-import shlex
 import logging as log
 from typing import List, Optional
 
 import npusim.prof.src.version as version
+from npusim.core.public.features import (
+    add_feature_list_argument,
+    feature_list_from_args,
+    feature_environment_args,
+    report_feature_defaults,
+)
 from npusim.prof.src.common.biprof_enum import (
     AnalysisType,
     ArchName,
@@ -74,6 +79,7 @@ class BiProfArgParser:
             add_help=False,
         )
         report_mode.set_defaults(mode=BiprofMode.REPORT)
+        add_feature_list_argument(report_mode)
 
         # -- Required arguments --
         required_args = report_mode.add_argument_group("Required arguments")
@@ -167,6 +173,36 @@ class BiProfArgParser:
         # -- Extra modes --
         extra_args = report_mode.add_argument_group("Extra modes")
         extra_args.add_argument(
+            "--scalar-ipc",
+            action=ArgumentAction.STORE_TRUE,
+            default=False,
+            help="Enable scalar IPC dynamic analysis",
+        )
+        extra_args.add_argument(
+            "--vec-ipc",
+            action=ArgumentAction.STORE_TRUE,
+            default=False,
+            help="Enable vector IPC dynamic analysis",
+        )
+        extra_args.add_argument(
+            "--simd-perf",
+            action=ArgumentAction.STORE_TRUE,
+            default=False,
+            help="Enable SIMD performance analysis (VfPMU top-down)",
+        )
+        extra_args.add_argument(
+            "--simd-sampling",
+            action=ArgumentAction.STORE_TRUE,
+            default=False,
+            help="Enable SIMD Stall reason analysis",
+        )
+        extra_args.add_argument(
+            "--memory-utilization",
+            action=ArgumentAction.STORE_TRUE,
+            default=False,
+            help=("Enable memory utilization analyzers (can take a long time)"),
+        )
+        extra_args.add_argument(
             "--roofline",
             action=ArgumentAction.STORE_TRUE,
             default=False,
@@ -185,24 +221,6 @@ class BiProfArgParser:
             help="Enable critical path analysis",
         )
         extra_args.add_argument(
-            "--memory-utilization",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help=("Enable memory utilization analyzers (can take a long time)"),
-        )
-        extra_args.add_argument(
-            "--scalar-ipc",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable scalar IPC dynamic analysis",
-        )
-        extra_args.add_argument(
-            "--vec-ipc",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable vector IPC dynamic analysis",
-        )
-        extra_args.add_argument(
             "--call-stack",
             action=ArgumentAction.STORE_TRUE,
             default=False,
@@ -213,18 +231,6 @@ class BiProfArgParser:
             action=ArgumentAction.STORE_TRUE,
             default=False,
             help="Enable matrix copying visualizer",
-        )
-        extra_args.add_argument(
-            "--simd-sampling",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable SIMD Stall reason analysis",
-        )
-        extra_args.add_argument(
-            "--simd-perf",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable SIMD performance analysis (VfPMU top-down)",
         )
         extra_args.add_argument(
             "--bubble",
@@ -314,12 +320,13 @@ class BiProfArgParser:
         return report_mode
 
     def parse(self, args: List[str]) -> Optional[argparse.Namespace]:
-        biprof_opts = os.environ.get("BIPROF_OPTS")
-        if biprof_opts:
-            for option in shlex.split(biprof_opts)[::-1]:
-                args.insert(1, option)
+        feature_list = feature_list_from_args(args)
+        env_args = feature_environment_args(feature_list)
+        args = list(args)
+        args[1:1] = env_args
 
         report_mode = self._report_mode()
+        report_mode.set_defaults(**report_feature_defaults(feature_list, multi_chip="--multi-chip-report" in args))
         for subparser in [report_mode]:
             self._add_help(subparser)
 
@@ -332,6 +339,10 @@ class BiProfArgParser:
 
         # Parsing pass 1: unknown arguments are allowed
         parsed_args, unknown_args = self._parser.parse_known_args(args)
+        # The legacy -g vf wrapper requests JSON explicitly, even with an empty
+        # feature list. Its IPC calculation is required to produce that JSON.
+        if parsed_args.vf_report_json and "--vf-report-json" in args:
+            parsed_args.vec_ipc = True
         all_parser_args = self._get_all_parser_args(self._parser)
 
         if not unknown_args:

@@ -24,6 +24,7 @@ import shutil
 import json
 import subprocess
 
+from npusim.core.public.features import collection_for_features
 from npusim.core.public.comm import print_error, print_info, print_warn
 from npusim.core.public.soc_info import cores_to_mask
 from npusim.core.record.paths import RecordPathError
@@ -331,8 +332,12 @@ def build_execution_env(
     object_file: Optional[str] = None,
     model: str = "CA",
     cc_chip: int = 1,
+    feature_list: Optional[str] = None,
 ) -> dict:
     env = base_env.copy()
+    if "CANNSIM_COLLECT" not in env:
+        env["CANNSIM_COLLECT"] = collection_for_features(feature_list, env)
+    print_info(f"Collection categories: {env['CANNSIM_COLLECT']}")
     existing_ld = env.get("LD_LIBRARY_PATH", "")
     env["LD_LIBRARY_PATH"] = f"{ca_model_path}:{existing_ld}" if existing_ld else str(ca_model_path)
 

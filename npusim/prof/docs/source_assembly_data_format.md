@@ -173,6 +173,13 @@ underlying execution tables; filtering the already aggregated view is insufficie
 | `Active`, `Stall`, `EmptyTicks`, `MemoryStall`, `ExecutionStall`, `QueueFullStall`, `SyncStall`, `InstrFetchStall`, `PipeActive` | SUM | SUM | Producer sampling/stall counters; not interchangeable with measured instruction duration |
 | `SIMDStallsJson` | `SIMDStallsByAddr.StallsJson` | `SIMDStallsByLine.StallsJson` | Serialized reason-to-value object; parse as JSON |
 
+`CacheLineCount`, `CacheLineUtilization` and `MemAccessStride` are produced by
+BiProf's base SIMT memory analyzer from a recording that includes `instr,simt`.
+They require per-thread addresses; SIMT IPC and execution masks do not require
+that address stream. Base collection includes `simt` automatically unless
+`CANNSIM_COLLECT` is explicitly overridden. No separate SIMT-analysis flag is
+introduced.
+
 Both views also expose location columns. `AsmMetrics` additionally has
 `InstrName`, `InstrParams`, `Pipe` and `CallStackId`. `InstrName` is the stored
 instruction text, which can include operands; it is not always a bare mnemonic.
@@ -253,13 +260,13 @@ for operator duration or infer a core utilization from instruction count.
 
 ## Current branch limitations
 
+- Generic sampling columns remain in the schema, but this branch's CLI exposes
+  only the `hotspots` analysis mode. Their presence does not imply a supported
+  sampling-mode run. `--simd-sampling` is a separate optional collection/analysis path.
 - Legacy VF SIMT metadata, live-register and warp-occupancy analyzers are
   disabled pending helper-contract adaptation. Their tables/columns remain;
   show unavailable data as unavailable. Other optional analyzers can also be
   disabled or fail: inspect `AnalysisState` and actual data availability.
-- Generic sampling columns remain in the schema, but this branch's CLI exposes
-  only the `hotspots` analysis mode. Their presence does not imply a supported
-  sampling-mode run. `--simd-sampling` is a separate optional collection/analysis path.
 - No full inline-frame-to-PC source map or complete source-file text bundle is
   exported automatically. A UI source resolver is required for full documents.
 - Aggregated views have no arbitrary runtime core filter and inherit the

@@ -23,7 +23,16 @@ VF 按执行模式分为两类：
 npusim record -s Ascend950 -g vf <user_app>
 ```
 
-`-g vf` 在生成常规性能分析报告（summary.json、流水图等）的同时，额外导出结构化的 VF 性能分析 JSON。
+`vec-ipc` 默认启用，但 `vf-report-json` 不默认启用，因此普通 `-g`
+不导出 VF JSON。可使用上面的 `-g vf`，或显式选择：
+
+```bash
+npusim record -s Ascend950 -g --feature-list vec-ipc,vf-report-json <user_app>
+```
+
+VF IPC/JSON 本身需要 `instr` 数据；基础分析还会采集 `ccu,simt,spr`。
+未指定 CLI 功能列表时，自定义 `BIPROF_OPTS` 替换整个默认功能集；空值关闭可选默认功能。
+完整默认功能与覆盖规则见[使用指南](01_user_guide.md#默认采集与分析选项)。
 
 ### 2.2 输出位置
 

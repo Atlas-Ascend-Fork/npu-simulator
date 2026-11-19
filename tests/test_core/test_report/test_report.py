@@ -144,7 +144,7 @@ class ReportTests(unittest.TestCase):
             idx = chain.biprof_args.index("--core-id")
             self.assertEqual(chain.biprof_args[idx + 1], "all")
 
-    def test_single_card_defaults_include_ipc_not_smart_pipes(self):
+    def test_single_card_leaves_analysis_defaults_to_profiler(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             export_dir = root / "export"
@@ -161,8 +161,10 @@ class ReportTests(unittest.TestCase):
                 )
 
             self.assertFalse(ok)
-            self.assertIn("--scalar-ipc", chain.biprof_args)
-            self.assertIn("--vec-ipc", chain.biprof_args)
+            # Analysis defaults are resolved by BiProfArgParser so BIPROF_OPTS
+            # can replace them without forced IPC flags from the core wrapper.
+            self.assertNotIn("--scalar-ipc", chain.biprof_args)
+            self.assertNotIn("--vec-ipc", chain.biprof_args)
             self.assertNotIn("--smart-pipes", chain.biprof_args)
 
     def test_single_card_smart_pipes_flag_is_forwarded(self):

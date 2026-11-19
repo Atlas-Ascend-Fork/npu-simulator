@@ -23,6 +23,7 @@ import stat
 from pathlib import Path
 from typing import Optional
 
+from npusim.core.public.features import collection_for_features
 from npusim.core.public.comm import print_error, print_info, print_warn
 from npusim.core.public.soc_info import cores_to_mask
 from npusim.core.record.paths import RecordPathError
@@ -223,6 +224,7 @@ def build_execution_env(
     config_template: Optional[Path] = None,
     model: str = "CA",
     resolved_cores: Optional[tuple] = None,
+    feature_list: Optional[str] = None,
 ) -> dict:
     """构建 sim 子进程环境变量。
 
@@ -252,6 +254,9 @@ def build_execution_env(
         RecordPathError: 找不到 ``libcannsim_helper.so``。
     """
     env = base_env.copy()
+    if "CANNSIM_COLLECT" not in env:
+        env["CANNSIM_COLLECT"] = collection_for_features(feature_list, env)
+    print_info(f"Collection categories: {env['CANNSIM_COLLECT']}")
     if resolved_cores:
         env["CORE_ENABLE_MASK"] = f"0x{cores_to_mask(resolved_cores):x}"
     existing_ld = env.get("LD_LIBRARY_PATH", "")

@@ -29,12 +29,14 @@ from npusim.core.record.config import (
     preprocess_gen_report_argv,
 )
 from npusim.core.report import report
+from npusim.core.public.features import add_feature_list_argument
 from npusim.core.public.comm import print_warn, welcome
 
 
 def _add_record_parser(subparsers):
     """Add record command parser to subparsers."""
     parser = subparsers.add_parser("record", help="Run user application in AscendOps simulation environment")
+    add_feature_list_argument(parser)
     parser.add_argument(
         "user_app",
         nargs="?",
@@ -112,6 +114,7 @@ def _add_record_parser(subparsers):
 def _add_report_parser(subparsers):
     """Add report command parser to subparsers."""
     parser = subparsers.add_parser("report", help="Generate performance analysis reports")
+    add_feature_list_argument(parser)
     parser.add_argument(
         "-e",
         "--export",
@@ -198,6 +201,7 @@ def handle_record_command(args, parser):
             gen_report=normalize_gen_report(args.gen_report),
             model=normalize_sim_mode(args.sim_mode),
             core_id=args.core_id or "",
+            feature_list=getattr(args, "feature_list", None),
         )
         return 0 if ktest(cfg) else 1
 
@@ -219,6 +223,7 @@ def handle_record_command(args, parser):
         core_id=getattr(args, "core_id", "") or "",
         model=normalize_sim_mode(args.sim_mode),
         chip=getattr(args, "chip", 0) or 0,
+        feature_list=getattr(args, "feature_list", None),
     )
     return 0 if record(cfg) else 1
 
@@ -231,7 +236,15 @@ def handle_report_command(args):
     merge_trace = getattr(args, "merge_trace", False)
     return (
         0
-        if report(args.export, args.output, args.core_id, object_file, smart_pipes=smart_pipes, merge_trace=merge_trace)
+        if report(
+            args.export,
+            args.output,
+            args.core_id,
+            object_file,
+            smart_pipes=smart_pipes,
+            merge_trace=merge_trace,
+            feature_list=getattr(args, "feature_list", None),
+        )
         else 1
     )
 

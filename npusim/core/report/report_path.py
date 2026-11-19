@@ -152,6 +152,7 @@ def _build_biprof_args(
     smart_pipes: bool = False,
     multi_chip: bool = False,
     object_file: Optional[str] = None,
+    feature_list: Optional[str] = None,
 ) -> List[str]:
     """构建 BiProfRunner report 子命令的完整参数列表。
 
@@ -173,15 +174,13 @@ def _build_biprof_args(
         str(input_db_path),
     ]
 
-    if not multi_chip:
-        args.extend(
-            [
-                "--scalar-ipc",
-                "--vec-ipc",
-            ]
-        )
-        if smart_pipes:
-            args.append("--smart-pipes")
+    if feature_list is not None:
+        args.extend(["--feature-list", feature_list])
+
+    if multi_chip:
+        args.append("--multi-chip-report")
+    elif smart_pipes:
+        args.append("--smart-pipes")
 
     args.extend(["--core-id", core_id or "0", "-j 8"])
 

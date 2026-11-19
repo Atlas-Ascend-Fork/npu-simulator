@@ -17,6 +17,7 @@
 """Auto-report generation for successful cannsim record runs."""
 
 from pathlib import Path
+from typing import Optional
 
 from npusim.core.public.comm import print_title
 from npusim.core.report.report import report
@@ -28,6 +29,7 @@ def generate_auto_report(
     gen_report: str,
     core_id: str,
     object_file: str = "",
+    feature_list: Optional[str] = None,
 ) -> bool:
     export_vf_json = gen_report == "vf"
     print()
@@ -41,6 +43,7 @@ def generate_auto_report(
         core_id=report_core_id,
         object_file=object_file or None,
         export_vf=export_vf_json,
+        feature_list=feature_list,
     )
     if gen_ok:
         print_title("(Report) NPU SIM auto generate report succeeded!")

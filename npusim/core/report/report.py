@@ -461,6 +461,7 @@ def generate_report(
     smart_pipes: bool = False,
     multi_chip: bool = False,
     merge_trace: bool = False,
+    feature_list: Optional[str] = None,
 ) -> bool:
     """
     生成性能报告（BiProfRunner）。
@@ -511,6 +512,7 @@ def generate_report(
         core_ids=core_ids,
         export_vf=export_vf,
         smart_pipes=smart_pipes,
+        feature_list=feature_list,
         multi_chip=multi_chip,
         object_file=object_file,
     )
@@ -594,6 +596,7 @@ def _run_report_backend(
     smart_pipes: bool,
     multi_chip: bool,
     object_file: Optional[str] = None,
+    feature_list: Optional[str] = None,
 ) -> bool:
     """构建 BiProf 参数并执行报告后处理流水。"""
     # ④ 构建参数 → 执行 BiProfRunner
@@ -603,6 +606,7 @@ def _run_report_backend(
         core_id=core_id,
         vf_report_json=export_vf,
         smart_pipes=smart_pipes,
+        feature_list=feature_list,
         multi_chip=multi_chip,
         object_file=object_file,
     )
@@ -644,9 +648,10 @@ def generate_multi_chip_report(
     output: Optional[str] = None,
     core_id: Optional[str] = None,
     object_file: Optional[str] = None,
-    export_vf: bool = True,
+    export_vf: bool = False,
     smart_pipes: bool = False,
     merge_trace: bool = False,
+    feature_list: Optional[str] = None,
 ) -> bool:
     """Generate reports for chip*_instr.bin files under export.
 
@@ -696,6 +701,7 @@ def generate_multi_chip_report(
                 object_file=object_file,
                 export_vf=export_vf,
                 smart_pipes=smart_pipes,
+                feature_list=feature_list,
                 multi_chip=True,
             )
             all_ok = all_ok and ok
@@ -714,9 +720,10 @@ def generate_multi_chip_db_report(
     output: Optional[str] = None,
     core_id: Optional[str] = None,
     object_file: Optional[str] = None,
-    export_vf: bool = True,
+    export_vf: bool = False,
     smart_pipes: bool = False,
     merge_trace: bool = False,
+    feature_list: Optional[str] = None,
 ) -> bool:
     """Generate per-chip reports for the helper per-chip DB layout.
 
@@ -744,6 +751,7 @@ def generate_multi_chip_db_report(
             object_file=object_file,
             export_vf=export_vf,
             smart_pipes=smart_pipes,
+            feature_list=feature_list,
             multi_chip=True,
         )
         all_ok = all_ok and ok
@@ -801,11 +809,13 @@ def _merge_core_traces(report_dir) -> None:
         print_warn(f"Failed to merge all traces: {e}")
 
 
-def report(export, output, core_id, object_file=None, export_vf=True, smart_pipes=False, merge_trace=False) -> bool:
+def report(
+    export, output, core_id, object_file=None, export_vf=False, smart_pipes=False, merge_trace=False, feature_list=None
+) -> bool:
     """
     \\b
     Command-line interface for generating performance reports.
-    VF report JSON is always included (full report).
+    Optional analyses and VF JSON are selected by feature_list or BIPROF_OPTS.
 
     分流（按优先级）：
     - 目录里有 ``chip*_instr.bin`` → 旧多卡 instr.bin 路径（需配对 chip*.db）
@@ -841,6 +851,7 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
             object_file=object_file,
             export_vf=export_vf,
             smart_pipes=smart_pipes,
+            feature_list=feature_list,
             merge_trace=merge_trace,
         )
 
@@ -854,6 +865,7 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
             object_file=object_file,
             export_vf=export_vf,
             smart_pipes=smart_pipes,
+            feature_list=feature_list,
             merge_trace=merge_trace,
         )
 
@@ -866,12 +878,14 @@ def report(export, output, core_id, object_file=None, export_vf=True, smart_pipe
         object_file=object_file,
         export_vf=export_vf,
         smart_pipes=smart_pipes,
+        feature_list=feature_list,
         merge_trace=merge_trace,
     )
 
 
 if __name__ == "__main__":
     import argparse
+    from npusim.core.public.features import add_feature_list_argument
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -906,11 +920,18 @@ if __name__ == "__main__":
         "(requires -n).",
     )
 
+    add_feature_list_argument(parser)
     args = parser.parse_args()
     sys.exit(
         0
         if report(
-            args.export, args.output, args.core_id, None, smart_pipes=args.smart_pipes, merge_trace=args.merge_trace
+            args.export,
+            args.output,
+            args.core_id,
+            None,
+            smart_pipes=args.smart_pipes,
+            merge_trace=args.merge_trace,
+            feature_list=args.feature_list,
         )
         else 1
     )

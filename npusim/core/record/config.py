@@ -18,7 +18,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 
 @dataclass
@@ -34,6 +34,7 @@ class RecordConfig:
     core_id: str = ""
     model: str = "CA"
     chip: int = 0
+    feature_list: Optional[str] = None
 
 
 def normalize_gen_report(raw) -> str:
@@ -91,4 +92,5 @@ def build_record_config_from_args(args) -> RecordConfig:
         core_id=getattr(args, "core_id", "") or "",
         model=normalize_sim_mode(getattr(args, "sim_mode", "ca")),
         chip=getattr(args, "chip", 0) or 0,
+        feature_list=getattr(args, "feature_list", None),
     )

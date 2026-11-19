@@ -27,6 +27,7 @@ from pathlib import Path
 from time import time, sleep
 from typing import List, Optional
 
+from npusim.core.public.features import add_feature_list_argument
 from npusim.core.public.comm import (
     print_error,
     print_info,
@@ -91,6 +92,7 @@ class CannsimRecord:
         self.origin_soc_version = cfg.soc_version
         self.soc_version = cfg.soc_version
         self.gen_report = cfg.gen_report
+        self.feature_list = cfg.feature_list
         self.user_option = cfg.user_option
         self.object_file = cfg.object_file
         self.core_id = cfg.core_id or ""
@@ -397,6 +399,7 @@ class CannsimRecord:
                 object_file=self.object_file,
                 model=self.model,
                 cc_chip=self.cc_chip,
+                feature_list=self.feature_list,
             )
         except RecordPathError as e:
             print_error(str(e))
@@ -538,6 +541,7 @@ def record(cfg: RecordConfig) -> bool:
                 cfg.gen_report,
                 cfg.core_id,
                 executor.object_file,
+                feature_list=cfg.feature_list,
             )
         return success
     finally:
@@ -552,6 +556,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    add_feature_list_argument(parser)
     parser.add_argument("user_app", help="Path to the user application")
     parser.add_argument("-o", "--output", default=".", help="Output directory")
     parser.add_argument("-s", "--soc-version", required=True, help="Target chip version")

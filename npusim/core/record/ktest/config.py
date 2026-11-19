@@ -17,7 +17,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 
 @dataclass
@@ -29,3 +29,4 @@ class KtestConfig:
     gen_report: str = ""
     model: str = "CA"
     core_id: str = ""
+    feature_list: Optional[str] = None

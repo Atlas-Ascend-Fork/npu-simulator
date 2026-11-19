@@ -17,11 +17,16 @@ are a line of arithmetic each, listed under *Deriving the rest*.
 
 ## Producing the data
 
+Memory-utilization is included in the default feature list. To select it alone:
+
 ```bash
-CANNSIM_COLLECT=all BIPROF_OPTS=--memory-utilization npusim record <app> -s Ascend950 -g vf
-# Or regenerate from an existing record:
-BIPROF_OPTS=--memory-utilization npusim report -e <record-directory>
+npusim record <app> -s Ascend950 -g --feature-list memory-utilization
+# Or regenerate from an existing recording containing the required events:
+npusim report -e <record-directory> --feature-list memory-utilization
 ```
+
+Recording automatically selects `instr,mem,ccu,simt,spr` unless `CANNSIM_COLLECT` is explicitly
+set. See the [complete dependency map](command_line_features.md).
 
 The run is deterministic: the same kernel database always yields the same rows.
 
@@ -47,6 +52,8 @@ table of the analysis database the same way:
 
 The kernel database needs the memory accesses in it, which means the simulation
 has to run with `CANNSIM_COLLECT` including `instr,mem` (or `all`).
+The automatic memory feature requests local-memory events from `mem`.
+`SgUbRwAcesses` belongs to `ub` and is not an input to the heatmap analyzer.
 Memory accesses need matching instructions to identify their owning core.
 Without memory events the analyzer reports `MemoryRWAccesses holds no data`
 and writes neither table. On CANN builds that ignore `CANNSIM_COLLECT`, use

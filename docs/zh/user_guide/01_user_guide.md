@@ -11,6 +11,48 @@ npusim --help
 ```
 ---
 
+## 默认采集与分析选项
+
+`record` 和 `report` 支持 `--feature-list`，用逗号分隔可选分析名称。默认值为：
+
+```text
+scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,bubble
+```
+
+录制时根据功能依赖自动设置 `CANNSIM_COLLECT`；以上默认功能需要
+`instr,mem,ub,ccu,pmu,simd,simt,spr,icache`，不再默认使用 `all`。显式设置的 `CANNSIM_COLLECT`
+始终原样传递，包括空值。
+
+```bash
+# 默认功能，录制后自动生成报告。
+npusim record /path/to/app -s Ascend950 -n 0 -g
+
+# 只启用 scalar IPC 与 Roofline 及基础分析，自动采集 instr,ub,ccu,simt,spr。
+npusim record /path/to/app -s Ascend950 -n 0 -g --feature-list scalar-ipc,roofline
+
+# 仅基础报告（包含可用的 Source/Assembly 数据），自动采集 instr,ccu,simt,spr。
+npusim record /path/to/app -s Ascend950 -n 0 -g --feature-list ''
+
+# 对已有记录只启用 Roofline；不会补采录制时缺失的数据。
+npusim report -e /path/to/recording -n 0 --feature-list roofline
+```
+
+显式功能列表替换默认列表；未知功能名会在执行前报错。未指定功能列表时，
+显式 `BIPROF_OPTS` 仍替换整个默认功能集，包括 `BIPROF_OPTS=''`。
+显式 CLI 功能列表优先于环境中的功能开关，日志级别等其他后端设置仍保留。
+多卡报告的隐式默认功能不包含 scalar/vector IPC。
+录制时仍需 `-g` 才会自动生成报告，`-g vf` 保留为显式 VF JSON 导出请求。
+
+基础分析采集 `instr,ccu,simt,spr`，支持原有的 SIMT GM 地址指标和 SPR 指令属性。
+默认分析包含 `vec-ipc`、`memory-utilization`、`roofline`、`simd-perf` 和 `bubble`。
+`bubble` 的 cache-miss 分类需要 `icache` 采集。`smart-pipes`、`critical-path`
+和 `vf-report-json` 均不默认启用；VF JSON 需通过 `-g vf` 或功能列表显式请求。
+基础 `ccu` 数据仍用于队列利用率、dispatch 和同步等待信息。
+仅使用原有 BiProf 分析选项，没有新增 SIMT、SPR 或 ICache 独立分析开关。
+各项分析仍依赖实际输入，纯 SIMT kernel 可能没有 SIMD PMU、SIMD sampling
+或本地内存访问事件。
+完整依赖、额外明细及覆盖规则见[功能与采集依赖表](../../../npusim/prof/docs/command_line_features.md)。
+
 ## 数据采集（record模式）
 
 基于仿真运行目标程序，采集数据，目标程序可以是可执行文件、shell脚本、python脚本等。
@@ -26,9 +68,10 @@ npusim --help
 
 |参数|可选/必选|说明|
 | --- | --- | --- |
+|--feature-list | 可选 | 逗号分隔的可选分析功能；空字符串仅保留基础分析。|
 |--soc-version 或 -s | 必选 | 指定模拟目标芯片版本（如：Ascend950）。ktest 模式（-c）下不可指定。|
 |--output 或 -o | 可选 | 生成文件所在路径，可配置为绝对路径或者相对路径，并且执行工具的用户需要具有读写权限。如果未指定路径，则默认在当前目录下保存数据。|
-|--gen-report 或 -g | 可选 | 启用仿真完成后是否进行自动解析，并生成分析报告。默认不自动解析。使用 `-g vf` 可在生成报告的同时额外导出 VF IPC JSON。|
+|--gen-report 或 -g | 可选 | 启用仿真完成后是否进行自动解析，并生成分析报告。默认不自动解析。默认报告选项集已包含 VF JSON 导出；`-g vf` 可显式请求该导出。|
 |--user-option 或 -u | 可选 | 用户自定义算子参数，以命令行选项形式传递给算子程序。ktest 模式（-c）下不生效，指定时工具会打印告警。|
 |--core-id 或 -n | 可选 | 仿真期间启用日志的AI Core，格式同 report -n：`all`（全核，信息完整但日志量大）、`0-2,12-14`（指定核区间，聚焦关键核兼顾覆盖与效率）、`5`（单核，日志最小分析最快但无法发现跨核问题）。默认仅 core 0（不注入 `CORE_ENABLE_MASK`，沿用模型默认）；配合 -g 且未指定时自动报告同样使用 core 0。|
 |--case-dir 或 -c | 可选 | ktest 模式：指定用例目录，工具以 `camodel ./sim` 方式运行仿真，并将该目录软链接为 `case`（用例目录需含 top.json，用于探测芯片数量）。指定后 user_app 与 -s/--soc-version 不可同时使用；--chip 与 -u 不生效（拓扑由 top.json 决定），指定时工具会打印告警；-n 生效（写入 CORE_ENABLE_MASK）。|
@@ -102,6 +145,7 @@ npusim record --help
 
 |参数 | 可选/必选 | 说明|
 | --- | --- | --- |
+|--feature-list | 可选 | 逗号分隔的可选分析功能；空字符串仅保留基础分析。|
 |--export 或 -e | 必选 | 仿真执行结果目录，指定到`npusim_{timestamp}_${user_app}`层，可配置为绝对路径或者相对路径，且执行用户需具有读写权限。|
 |--output 或 -o | 可选 | 性能分析报告（含指令流水图）输出目录，可配置为绝对路径或者相对路径，且执行用户需具有读写权限。若未指定路径，默认写入 export 目录下的 `report` 子目录，即 `<export>/report`。|
 |--core-id 或 -n | 可选 | 指定生成指令流水的核ID，支持格式：`all`（全核，信息完整但日志量大）、`0-2,12-14`（指定核区间，聚焦关键核兼顾覆盖与效率）、`5`（单核，日志最小分析最快但无法发现跨核问题）。不指定默认生成0核的指令流水。|

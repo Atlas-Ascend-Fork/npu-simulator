@@ -128,3 +128,50 @@ result = record(cfg)   # 运行三阶段流水线，打印终端 UI
 2. **结构化数据传递** — 阶段间通过 `RecordConfig` / `RecordPaths` / `LaunchSpec` / `RunResult` 等 dataclass 传递；其中路径与启动规格使用 frozen dataclass 表达不可变结果。
 3. **优雅中断** — `runner` 将 `KeyboardInterrupt` 转化为进程组终止；`CannsimRecord` 记录中断状态并在汇总中展示已捕获的进度。
 4. **CI 友好** — 设置 `NPUSIM_NO_DELAY=1` 可跳过阶段间延迟，加速自动化场景；旧变量 `CANNSIM_NO_DELAY=1` 仍兼容。
+
+## Feature selection and collection
+
+`record --feature-list` selects optional analyses using comma-separated names.
+Without an explicit selection, the default list is:
+
+```text
+scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,bubble
+```
+
+`record` and `ktest` derive `CANNSIM_COLLECT` from the selected features. The
+list above requires `instr,mem,ub,ccu,pmu,simd,simt,spr,icache`. `all` is never selected automatically.
+An explicit `CANNSIM_COLLECT` is preserved exactly, including an empty value.
+
+```bash
+# Default feature list; generate a report after recording.
+npusim record ./app -s Ascend950 -n 0 -g
+
+# Only Roofline and scalar IPC plus base data; collect instr,ub,ccu,simt,spr.
+npusim record ./app -s Ascend950 -n 0 -g --feature-list scalar-ipc,roofline
+
+# Base report, including available Source/Assembly; collect instr,ccu,simt,spr.
+npusim record ./app -s Ascend950 -n 0 -g --feature-list ''
+
+# Analyze previously collected inputs; cannot add missing collection data.
+npusim report -e /path/to/recording -n 0 --feature-list roofline
+```
+
+Without a CLI feature list, an explicit `BIPROF_OPTS` replaces the entire default
+feature set. `BIPROF_OPTS=''` disables optional defaults. An explicit feature list
+overrides environment feature flags while retaining other backend settings.
+The `-g` / `-g vf` report trigger remains available. `critical-path` and
+`vf-report-json` are not defaults; VF JSON requires an explicit request such as
+`-g vf` or `--feature-list vec-ipc,vf-report-json`. Multi-chip implicit defaults
+omit scalar/vector IPC.
+
+Base collection includes `instr,ccu,simt,spr` for BiProf's existing base analyses,
+including queue utilization and dispatch information. This `ccu` dependency is independent of optional critical-path.
+The default optional features include `bubble`; its cache-miss classification
+requires the `icache` collector. `smart-pipes` is explicit opt-in. The required
+`vec-ipc`, `memory-utilization`, `roofline` and `simd-perf` are all defaults.
+Only existing BiProf analysis flags are used; `--feature-list` is the selection
+interface and no separate SIMT, SPR or ICache analysis options are introduced.
+
+See the [complete feature/category map](../../prof/docs/command_line_features.md)
+for input tables, additional trace details requiring explicit collection,
+selection priority and kernel-specific missing-data behavior.

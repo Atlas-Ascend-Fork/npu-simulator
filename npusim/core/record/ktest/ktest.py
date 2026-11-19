@@ -192,6 +192,7 @@ class CannsimKtest:
                     self.config_template,
                     model=self.model,
                     resolved_cores=self.resolved_cores,
+                    feature_list=self.cfg.feature_list,
                 )
             except RecordPathError as e:
                 print_error(str(e))
@@ -308,6 +309,7 @@ def ktest(cfg: KtestConfig) -> bool:
                 gen_report=cfg.gen_report,
                 core_id=cfg.core_id or "all",
                 object_file="",
+                feature_list=cfg.feature_list,
             )
         return success
     finally:

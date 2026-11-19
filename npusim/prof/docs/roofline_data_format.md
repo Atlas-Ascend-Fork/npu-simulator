@@ -18,16 +18,17 @@ The four `Roofline*` tables reside in the same SQLite database as the kernel's
 `ExecutedInstructions`, `Functions`, and other profiler tables. Each kernel-launch
 database has its own snapshot. There is no separate Roofline database.
 
-Enable the analyzer through the profiler backend options:
+Roofline is included in the default feature list. To select only Roofline:
 
 ```bash
-BIPROF_OPTS='--roofline --object-file /path/to/device.o' \
-  npusim report -e /path/to/npusim_archive -n 0
+npusim record ./app -s Ascend950 -n 0 -g --feature-list roofline
+npusim report -e /path/to/npusim_archive -n 0 --feature-list roofline
 ```
 
-`--object-file` supplies the matching device ELF when function metadata must be
-loaded. `--roofline` belongs in `BIPROF_OPTS`, rather than the top-level report
-arguments. `--smart-pipes` is not required.
+Recording automatically selects `instr,ub,ccu,simt,spr` unless `CANNSIM_COLLECT` is explicitly
+set. Regenerating a report cannot collect missing input data. Recorded device ELFs
+are selected automatically; `--object-file` remains an optional override.
+`--smart-pipes` is not required. See the [feature dependency map](command_line_features.md).
 
 A successful analyzer run replaces the rows in all four tables within one
 savepoint. The tables contain the latest snapshot, not an append-only history.
