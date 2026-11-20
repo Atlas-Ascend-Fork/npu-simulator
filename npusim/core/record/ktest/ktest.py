@@ -29,6 +29,7 @@ from typing import Optional
 from npusim.core.public.comm import print_error, print_info, print_warn
 from npusim.core.record.artifacts import archive_instr_bin_glob, archive_helper_dbs
 from npusim.core.record.auto_report import generate_auto_report
+from npusim.core.record.config import format_duration
 from npusim.core.record.presentation import (
     print_record_summary,
     print_stage_fail,
@@ -70,6 +71,7 @@ class CannsimKtest:
         self.cfg = cfg
         self.case_dir = Path(cfg.case_dir).resolve()
         self.model = cfg.model
+        self.timeout = float(getattr(cfg, "timeout", 0.0) or 0.0)
         self.config_template: Optional[Path] = None
         self.runtime_config: str = ""
         self.resolved_cores: Optional[tuple] = None
@@ -86,6 +88,7 @@ class CannsimKtest:
         self._last_returncode: Optional[int] = None
         self._last_run_elapsed: float = 0.0
         self._interrupted: bool = False
+        self._timed_out: bool = False
 
     # --------------- Stage 1: Preflight ---------------
 
@@ -93,6 +96,7 @@ class CannsimKtest:
         params = {
             "case-dir": str(self.case_dir),
             "output": str(self.cfg.output),
+            "timeout": format_duration(self.timeout) if self.timeout > 0 else "(none)",
         }
         self._stage1_context = params
 
@@ -219,13 +223,22 @@ class CannsimKtest:
                 cwd=str(self.paths.camodel_path),
                 log_path=log_path,
                 title="./sim · dav_3510",
+                timeout=self.timeout,
             )
 
             self._last_dashboard = result.dashboard
             self._last_stderr_tail = result.stderr_tail
             self._last_returncode = result.returncode
             self._interrupted = result.interrupted
+            self._timed_out = result.timed_out
             self._last_run_elapsed = time() - start_t
+
+            if result.timed_out:
+                print_warn(
+                    f"Simulation timed out after {self._last_run_elapsed:.1f}s "
+                    f"(limit {self.timeout:.1f}s); partial assets will be archived."
+                )
+                return False
 
             return result.success
 
@@ -299,6 +312,9 @@ def ktest(cfg: KtestConfig) -> bool:
             executor._interrupted = True
             print_warn("Received KeyboardInterrupt; cleaning up.")
             success = False
+
+        # 回填超时状态：供编程调用方查询超时原因（CLI 统一按失败退出码 1）
+        cfg.timed_out = executor._timed_out
 
         print_record_summary(executor, success)
 

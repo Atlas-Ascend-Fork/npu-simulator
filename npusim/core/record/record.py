@@ -44,6 +44,7 @@ from npusim.core.record.auto_report import generate_auto_report
 from npusim.core.record.config import (
     RecordConfig,
     build_record_config_from_args,
+    format_duration,
     normalize_gen_report,
     preprocess_gen_report_argv,
 )
@@ -100,6 +101,8 @@ class CannsimRecord:
         self.chip = int(getattr(cfg, "chip", 0) or 0)
         self.cc_chip = 1
         self.soc_version_mapping = SOC_INFO
+        # 最大仿真时长（秒）；0 = 不限制。计时从子进程 Popen 开始。
+        self.timeout = float(getattr(cfg, "timeout", 0.0) or 0.0)
 
         # stage1 校验通过后回填：
         # - ai_core_count: 该 SoC 的 AI core 总数（= CORE_ENABLE_MASK 有效位宽）。
@@ -124,6 +127,7 @@ class CannsimRecord:
         self._last_returncode: Optional[int] = None
         self._last_run_elapsed: float = 0.0
         self._interrupted: bool = False
+        self._timed_out: bool = False
         self._execution_argv: list = []
         self._execution_cwd: Path = Path.cwd()
 
@@ -145,6 +149,7 @@ class CannsimRecord:
             "user-option": self.user_option if self.user_option else "(none)",
             "core-id": self.core_id if self.core_id else "(default)",
             "model": self.model,
+            "timeout": format_duration(self.timeout) if self.timeout > 0 else "(none)",
         }
         self._stage1_context = params
 
@@ -154,6 +159,8 @@ class CannsimRecord:
             return self._stage_fail(1, "Missing required option: output")
         if not self.soc_version:
             return self._stage_fail(1, "Missing required option: soc-version")
+        if self.timeout < 0:
+            return self._stage_fail(1, f"Invalid timeout value: {self.timeout} (must be >= 0)")
 
         # 命令模式（如 "python xxx", "bash ./run.sh"）不要求 user_app 是本地文件。
         # 本地文件模式必须验证路径存在且为普通文件，保持二进制场景的明确报错。
@@ -424,6 +431,7 @@ class CannsimRecord:
                     cwd=str(app_cwd),
                     log_path=log_path,
                     title=f"{cmdline} · {self.origin_soc_version}",
+                    timeout=self.timeout,
                 )
             except KeyboardInterrupt:
                 self._interrupted = True
@@ -435,7 +443,15 @@ class CannsimRecord:
             self._last_stderr_tail = result.stderr_tail
             self._last_returncode = result.returncode
             self._interrupted = result.interrupted
+            self._timed_out = result.timed_out
             self._last_run_elapsed = time() - start_t
+
+            if result.timed_out:
+                print_warn(
+                    f"Simulation timed out after {self._last_run_elapsed:.1f}s "
+                    f"(limit {self.timeout:.1f}s); partial assets will be archived."
+                )
+                return False
 
             if result.interrupted:
                 print_warn(f"Interrupted by user after {self._last_run_elapsed:.1f}s; partial assets will be archived.")
@@ -464,6 +480,7 @@ class CannsimRecord:
             self.core_id,
             self.user_option,
             self.gen_report,
+            self.timeout,
         )
 
     # --------------- 通用 stage 打印 ---------------
@@ -532,6 +549,9 @@ def record(cfg: RecordConfig) -> bool:
             print_warn("Received KeyboardInterrupt; cleaning up.")
             success = False
 
+        # 回填超时状态：供编程调用方查询超时原因（CLI 统一按失败退出码 1）
+        cfg.timed_out = executor._timed_out
+
         executor.print_summary(success)
 
         if success and cfg.gen_report:
@@ -584,6 +604,14 @@ if __name__ == "__main__":
         help="Simulation mode: 'pv' for programmer-view (functional only, faster, "
         "without accurate timing) or 'ca' for accurate timing simulation. "
         "Defaults to 'ca'.",
+    )
+    parser.add_argument(
+        "--timeout",
+        default=None,
+        metavar="SECONDS",
+        help="Maximum simulation time in seconds (a plain number, e.g. 30, or "
+        "with an 's' suffix, e.g. 30s; 0 = no limit). Falls back to "
+        "$NPUSIM_TIMEOUT when omitted.",
     )
 
     args = parser.parse_args(preprocess_gen_report_argv(sys.argv[1:]))

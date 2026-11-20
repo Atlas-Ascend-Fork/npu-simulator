@@ -54,7 +54,10 @@ flowchart TD
 ### config — 录制配置
 
 - **`RecordConfig`** — dataclass，持有 CLI 转译后的所有录制参数：
-  `user_app`, `output`, `soc_version`, `gen_report`, `user_option`, `object_file`, `core_id`
+  `user_app`, `output`, `soc_version`, `gen_report`, `user_option`, `object_file`, `core_id`, `timeout`
+  （`timed_out` 为 `record()` 结束后的回填状态，非输入参数）
+- **`parse_duration(raw)`** — 把超时时长归一化为秒：只接受秒，纯数字（如 `90`、`1.5`）或带 `s` 后缀（如 `30s`，大小写不敏感）；`0` 表示不限制；分钟/小时（`30m`、`2h`）、负数等其他写法抛 `ValueError`
+- **`resolve_timeout(cli_value, env)`** — 解析生效超时：显式 CLI 值 > `$NPUSIM_TIMEOUT` > 0（不限制）
 - **`build_record_config_from_args(args)`** — 从 argparse Namespace 构造 `RecordConfig`
 - **`normalize_gen_report(raw)`** — 归一化 `--gen-report` 参数（`True → "true"`，`False → ""`，`"vf"` → `"vf"`）
 
@@ -76,8 +79,9 @@ flowchart TD
 
 ### runner — 子进程执行
 
-- **`RunResult`** — dataclass：`success`, `dashboard`, `stderr_tail`, `interrupted`, `returncode`
-- **`run_user_app_with_dashboard(argv, env, cwd, log_path, title)`** — 以 `start_new_session=True` 启动子进程；stdout/stderr 读线程同时写日志并喂给 Dashboard；`KeyboardInterrupt` 时终止进程组（SIGTERM → SIGKILL 逐级升级）
+- **`RunResult`** — dataclass：`success`, `dashboard`, `stderr_tail`, `interrupted`, `timed_out`, `returncode`
+- **`run_user_app_with_dashboard(argv, env, cwd, log_path, title, timeout=0.0)`** — 以 `start_new_session=True` 启动子进程；stdout/stderr 读线程同时写日志并喂给 Dashboard；`KeyboardInterrupt` 时终止进程组（SIGTERM → SIGKILL 逐级升级）
+- **超时保护** — `timeout > 0` 时主线程 `wait(timeout)` 到点即触发 `_terminate_process_group`（SIGTERM → 5s 宽限 → SIGKILL），`RunResult.timed_out` 回传；计时起点为子进程 Popen，仅覆盖仿真执行段。超时前后的配置 / 事件以 `[npusim]` 标记行写入 `npusim.log`，超时触发的终止即使退出码为 0 也判失败
 
 ### artifacts — 产物归档
 
@@ -127,7 +131,8 @@ result = record(cfg)   # 运行三阶段流水线，打印终端 UI
 1. **职责分离** — 配置、路径、环境、执行、归档、报告、展示各自独立子模块；`record.py` 仅做编排。
 2. **结构化数据传递** — 阶段间通过 `RecordConfig` / `RecordPaths` / `LaunchSpec` / `RunResult` 等 dataclass 传递；其中路径与启动规格使用 frozen dataclass 表达不可变结果。
 3. **优雅中断** — `runner` 将 `KeyboardInterrupt` 转化为进程组终止；`CannsimRecord` 记录中断状态并在汇总中展示已捕获的进度。
-4. **CI 友好** — 设置 `NPUSIM_NO_DELAY=1` 可跳过阶段间延迟，加速自动化场景；旧变量 `CANNSIM_NO_DELAY=1` 仍兼容。
+4. **超时保护** — `--timeout` / `$NPUSIM_TIMEOUT` 设定最大仿真时长，主线程 `wait(timeout)` 单点判定，超时走与失败一致的 partial 归档路径，终端 Summary 与 `npusim.log` 以 TIMEOUT 标注提示超时原因。
+5. **CI 友好** — 设置 `NPUSIM_NO_DELAY=1` 可跳过阶段间延迟，加速自动化场景；旧变量 `CANNSIM_NO_DELAY=1` 仍兼容。
 
 ## Feature selection and collection
 

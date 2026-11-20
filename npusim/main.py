@@ -19,6 +19,7 @@ cannsim - Command-line tool for performance simulation analysis
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from npusim.core.record.config import (
     normalize_gen_report,
     normalize_sim_mode,
     preprocess_gen_report_argv,
+    resolve_timeout,
 )
 from npusim.core.report import report
 from npusim.core.public.features import add_feature_list_argument
@@ -109,6 +111,17 @@ def _add_record_parser(subparsers):
         "mock stack is auto-enabled (HCCL mock injection + comm env). "
         "Defaults to $CAMODEL_SIM_RANK_SIZE (or 1).",
     )
+    parser.add_argument(
+        "--timeout",
+        default=None,
+        metavar="SECONDS",
+        help="Maximum simulation time in seconds; the simulation process group "
+        "is terminated and partial assets are archived when exceeded. Accepts a "
+        "plain number (seconds, e.g. 30) or with an 's' suffix (e.g. 30s); "
+        "0 = no limit, the default. Falls back to $NPUSIM_TIMEOUT when omitted. "
+        "On timeout the simulation process group is terminated and the summary "
+        "is annotated with TIMEOUT.",
+    )
 
 
 def _add_report_parser(subparsers):
@@ -179,6 +192,11 @@ def handle_record_command(args, parser):
       user_app and -s/--soc-version are not allowed.
     - Without -c: classic record mode. user_app and -s/--soc-version are required.
     """
+    try:
+        timeout = resolve_timeout(getattr(args, "timeout", None), os.environ)
+    except ValueError as e:
+        parser.error(str(e))
+
     has_case = bool(getattr(args, "case_dir", None))
     has_app = bool(args.user_app)
     has_soc = bool(args.soc_version)
@@ -202,6 +220,7 @@ def handle_record_command(args, parser):
             model=normalize_sim_mode(args.sim_mode),
             core_id=args.core_id or "",
             feature_list=getattr(args, "feature_list", None),
+            timeout=timeout,
         )
         return 0 if ktest(cfg) else 1
 
@@ -224,6 +243,7 @@ def handle_record_command(args, parser):
         model=normalize_sim_mode(args.sim_mode),
         chip=getattr(args, "chip", 0) or 0,
         feature_list=getattr(args, "feature_list", None),
+        timeout=timeout,
     )
     return 0 if record(cfg) else 1
 
@@ -259,6 +279,7 @@ def main():
         $ npusim record ./app -s Ascend950 -o ./output
         $ npusim record ./app -s Ascend950 -o ./output -u "--input data.json"
         $ npusim record -c /path/to/case -o ./output
+        $ npusim record ./app -s Ascend950 -o ./output --timeout 7200
         $ npusim report -e ./output/sim -o ./output/trace.json
 
     Note:

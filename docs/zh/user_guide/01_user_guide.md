@@ -77,6 +77,7 @@ npusim report -e /path/to/recording -n 0 --feature-list roofline
 |--case-dir 或 -c | 可选 | ktest 模式：指定用例目录，工具以 `camodel ./sim` 方式运行仿真，并将该目录软链接为 `case`（用例目录需含 top.json，用于探测芯片数量）。指定后 user_app 与 -s/--soc-version 不可同时使用；--chip 与 -u 不生效（拓扑由 top.json 决定），指定时工具会打印告警；-n 生效（写入 CORE_ENABLE_MASK）。|
 |--sim_mode | 可选 | 指定仿真模式：`ca`（精确时序仿真，默认）或 `pv`（程序员视图仿真：仅做功能仿真，速度更快，不包含精确时序信息，适合功能验证场景）。|
 |--chip | 可选 | 通信域内仿真卡数，设置 `CAMODEL_SIM_RANK_SIZE`；>1 时自动启用多卡通信仿真栈（不指定则读 `CAMODEL_SIM_RANK_SIZE`，默认 1）。ktest 模式（-c）下不生效，拓扑由用例 top.json 决定。|
+|--timeout | 可选 | 最大仿真时长（单位：秒），超时后自动终止仿真进程组并归档已产出的部分产物。接受纯数字（如 `90`）或带 `s` 后缀的值（如 `30s`）；`0` 表示不限制（默认）。未指定时读取环境变量 `NPUSIM_TIMEOUT`，命令行显式传入的值优先。仿真超时时按普通失败退出（退出码 `1`），终端 Summary 与 `npusim.log` 会以 TIMEOUT 标注明确提示超时原因。|
 |user_app|必选|待运行的算子程序或命令（如 `./app`、`"python train.py"`、`"bash run.sh"`）。命令中含空格时，需将整条命令用引号括成一个参数；ktest 模式（-c）下不可指定。|
 
 命令详细说明可以使用如下命令进行查看
@@ -96,6 +97,8 @@ npusim record --help
     # 方式二：仅仿真采集，不生成报告（如后续需手动执行 npusim report 再生成）
     $ npusim record /path/to/app -o ./output -s Ascend950
     ```
+
+    如需限制最大仿真时长（如防止挂死占用机器），可在任一方式上追加 `--timeout` 参数（单位为秒），例如 `--timeout 7200`。
 
 3. 命令完成后，会在默认路径或指定的“output”目录下生成以“`npusim_{timestamp}_${user_app}`”命名的文件夹，结构示例如下：
 
@@ -130,6 +133,15 @@ npusim record --help
     ```
 
 5. 查看算子仿真结果，参考[数据分析（report模式）](#数据分析report模式)。
+
+**退出码说明**
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 仿真成功完成。 |
+| 1 | 仿真失败（子进程非零退出，或参数 / 路径校验未通过）。仿真超时同样按此退出码退出，终端 Summary 与 `npusim.log` 会以 TIMEOUT 标注明确提示超时原因。 |
+| 2 | 命令行参数格式错误（argparse 报错，含非法的 `--timeout` / `NPUSIM_TIMEOUT` 值）。 |
+
 ---
 
 ## 数据分析（report模式）

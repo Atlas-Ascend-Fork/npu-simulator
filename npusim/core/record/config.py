@@ -16,9 +16,15 @@
 
 """Configuration types and CLI argument normalization for cannsim record."""
 
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
+
+TIMEOUT_ENV_VAR = "NPUSIM_TIMEOUT"
+
+_DURATION_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*s?\s*$", re.IGNORECASE)
 
 
 @dataclass
@@ -35,6 +41,63 @@ class RecordConfig:
     model: str = "CA"
     chip: int = 0
     feature_list: Optional[str] = None
+    timeout: float = 0.0
+    # 由 record() 在执行结束后回填（非输入参数）：仿真是否因超时被终止。
+    # 供 CLI 层映射超时专用退出码，编程调用方可忽略。
+    timed_out: bool = False
+
+
+def parse_duration(raw) -> float:
+    """把超时时长归一化为秒。
+
+    只接受秒：纯数字（如 ``90``、``1.5``）或带 ``s`` 后缀的字符串
+    （如 ``30s``，大小写不敏感）；数字类型直接按秒解释。
+    ``0`` 表示不限制。分钟 / 小时等其他单位（``30m``、``2h``）、
+    负数、空串、复合写法等非法输入抛 ValueError。
+    """
+    if raw is None:
+        return 0.0
+    if isinstance(raw, bool):
+        raise ValueError(f"invalid timeout value: {raw!r}")
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        if value < 0:
+            raise ValueError(f"negative timeout is not allowed: {raw!r}")
+        return value
+    match = _DURATION_PATTERN.match(str(raw))
+    if match is None:
+        raise ValueError(
+            f"invalid timeout value {raw!r}: expected seconds (a plain number "
+            f"or with an 's' suffix, e.g. 30 or 30s); 0 disables the limit"
+        )
+    return float(match.group(1))
+
+
+def format_duration(seconds: float) -> str:
+    """把秒格式化成人类可读的短时长（7200 -> '2h'，1800 -> '30m'，90 -> '90s'）。"""
+    seconds = float(seconds)
+    if seconds <= 0:
+        return "0s"
+    for unit, size in (("h", 3600), ("m", 60)):
+        if seconds >= size and seconds % size == 0:
+            return f"{int(seconds // size)}{unit}"
+    return f"{seconds:g}s"
+
+
+def resolve_timeout(cli_value, env=None) -> float:
+    """解析生效的超时时长：显式 CLI 值 > $NPUSIM_TIMEOUT > 0（不限制）。
+
+    CLI 传入 ``0`` 视为显式关闭限制，优先于环境变量。非法输入（CLI 或环境
+    变量来源）抛 ValueError，由调用方决定报错形式。
+    """
+    if cli_value is not None:
+        return parse_duration(cli_value)
+    if env is None:
+        env = os.environ
+    raw = (env.get(TIMEOUT_ENV_VAR) or "").strip()
+    if not raw:
+        return 0.0
+    return parse_duration(raw)
 
 
 def normalize_gen_report(raw) -> str:
@@ -93,4 +156,5 @@ def build_record_config_from_args(args) -> RecordConfig:
         model=normalize_sim_mode(getattr(args, "sim_mode", "ca")),
         chip=getattr(args, "chip", 0) or 0,
         feature_list=getattr(args, "feature_list", None),
+        timeout=resolve_timeout(getattr(args, "timeout", None)),
     )

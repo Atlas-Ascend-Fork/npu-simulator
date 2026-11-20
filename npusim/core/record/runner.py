@@ -37,6 +37,7 @@ class RunResult:
     dashboard: Optional[Dashboard] = None
     stderr_tail: str = ""
     interrupted: bool = False
+    timed_out: bool = False
     returncode: Optional[int] = None
 
 
@@ -46,6 +47,16 @@ def _tail_log(log_path, max_lines=10):
             return "".join(deque(f, maxlen=max_lines))
     except Exception:
         return ""
+
+
+def _write_log_marker(tee_fp, tee_lock, message: str) -> None:
+    """向 npusim.log 写入一行 ``[npusim]`` 标记，使日志自描述（超时配置/事件可追溯）。"""
+    try:
+        with tee_lock:
+            tee_fp.write(f"[npusim] {message}\n")
+            tee_fp.flush()
+    except Exception:
+        pass
 
 
 def _terminate_process_group(process, timeout=5.0):
@@ -80,7 +91,7 @@ def _terminate_process_group(process, timeout=5.0):
     process.wait()
 
 
-def run_user_app_with_dashboard(argv, env, cwd, log_path, title):
+def run_user_app_with_dashboard(argv, env, cwd, log_path, title, timeout=0.0):
     """拉起 USER_APP 子进程，挂一个 :class:`Dashboard` 做实时监控与渲染。
 
     行为契约：
@@ -91,12 +102,16 @@ def run_user_app_with_dashboard(argv, env, cwd, log_path, title):
       非 TTY 下走事件流 append + 30s 心跳。
     - 进程结束 / 异常中断时，先停 Dashboard 再关闭 tee 文件，确保最后一帧面板清零。
     - SIGINT: 清理整个 USER_APP 进程组，并通过 RunResult.interrupted 回传给调用方。
+    - timeout > 0 时：主线程 ``wait(timeout)`` 到点即触发进程组终止
+      （SIGTERM → 宽限 → SIGKILL），通过 RunResult.timed_out 回传；
+      计时起点为子进程 Popen，仅覆盖仿真执行段。
 
     Returns:
-        :class:`RunResult`，包含 success / interrupted / returncode / dashboard /
-        stderr_tail，辅助上层打印 summary。
+        :class:`RunResult`，包含 success / interrupted / timed_out / returncode /
+        dashboard / stderr_tail，辅助上层打印 summary。
     """
     start_time = time()
+    effective_timeout = float(timeout) if timeout and timeout > 0 else 0.0
 
     try:
         tee_fp = open(log_path, "w", encoding="utf-8")
@@ -126,12 +141,16 @@ def run_user_app_with_dashboard(argv, env, cwd, log_path, title):
 
     tee_lock = threading.Lock()
 
+    if effective_timeout > 0:
+        _write_log_marker(tee_fp, tee_lock, f"timeout limit: {effective_timeout:.1f}s")
+
     dashboard = Dashboard(
         pid=process.pid,
         log_path=log_path,
         title=title,
         start_time=start_time,
         process_alive_cb=lambda: process.poll() is None,
+        timeout=effective_timeout,
     )
 
     def read_output(pipe):
@@ -149,20 +168,34 @@ def run_user_app_with_dashboard(argv, env, cwd, log_path, title):
         finally:
             pipe.close()
 
-    stdout_thread = threading.Thread(
-        target=read_output, args=(process.stdout,), daemon=True
-    )
-    stderr_thread = threading.Thread(
-        target=read_output, args=(process.stderr,), daemon=True
-    )
+    stdout_thread = threading.Thread(target=read_output, args=(process.stdout,), daemon=True)
+    stderr_thread = threading.Thread(target=read_output, args=(process.stderr,), daemon=True)
     stdout_thread.start()
     stderr_thread.start()
 
     dashboard.start()
 
     interrupted = False
+    timed_out = False
     try:
-        process.wait()
+        if effective_timeout > 0:
+            process.wait(timeout=effective_timeout)
+        else:
+            process.wait()
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        # 先落标记再 kill：保证 npusim.log 里能看到超时事件与配置，便于事后排查
+        _write_log_marker(
+            tee_fp,
+            tee_lock,
+            f"TIMEOUT after {effective_timeout:.1f}s: terminating simulation process group",
+        )
+        try:
+            _terminate_process_group(process)
+        except KeyboardInterrupt:
+            # 宽限期内的 Ctrl-C：进程组已在终止流程中，超时结果优先上报
+            pass
+        dashboard.notify_timeout()
     except KeyboardInterrupt:
         # 透传给上层；上层 record() 负责做 graceful archive 和事件汇总
         interrupted = True
@@ -176,12 +209,15 @@ def run_user_app_with_dashboard(argv, env, cwd, log_path, title):
         except Exception:
             pass
 
-    success = process.returncode == 0
+    # 超时/中断触发的终止即使退出码为 0 也判失败：仿真没有跑完它的任务
+    success = process.returncode == 0 and not timed_out and not interrupted
     # 失败时截取最后 10 行作为 stderr_tail，便于在 summary 里帮用户定位错误。
     stderr_tail = _tail_log(log_path) if not success else ""
 
     elapsed = time() - start_time
-    if interrupted:
+    if timed_out:
+        print_error(f"Simulation TIMEOUT after {elapsed:.2f}s (limit {effective_timeout:.1f}s)")
+    elif interrupted:
         print_error(f"USER_APP interrupted after {elapsed:.2f}s")
     elif success:
         print_info(f"USER_APP executed successfully in {elapsed:.2f}s")
@@ -193,5 +229,6 @@ def run_user_app_with_dashboard(argv, env, cwd, log_path, title):
         dashboard=dashboard,
         stderr_tail=stderr_tail,
         interrupted=interrupted,
+        timed_out=timed_out,
         returncode=process.returncode,
     )

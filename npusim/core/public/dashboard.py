@@ -154,24 +154,60 @@ class Event:
 # 开头**不**命中这些前缀的行，视为 USER_APP 自身的 printf/printf-like 输出，
 # 值得醒目 echo 给用户（这是"我的代码跑出了什么结果"的直接证据）。
 _FRAMEWORK_PREFIXES: Tuple[str, ...] = (
-    "[CORE_WRAPPER]", "[TmSim]", "[debug]", "[info]", "[INFO]",
-    "[DRVSTUB_LOG]", "[ESL_TOP]", "[Esl Top]", "[Hardware]",
-    "[NOTE]", "[FUSION]", "[DVPP]", "[UBDMA]",
-    "==", "WARNING:", "Warning:", "Warning!",
-    "CONFIG STARS", "Module STARS",
-    "SLLC CONNECT", "Create ./log", "Create ./run_log", "Create ./log_ca",
-    "SoC unit ", "SoC sub ", "HHA->", "DDR ",
-    "Reading DDR", "Guide file:", "Start to build", "Start simulation",
-    "rank0_chip",   # 多 rank 日志里的 rankN_chipN_created 框架输出
-    "rankId:", "chip type:", "core count:", "thread count:", "chipNum:",
+    "[CORE_WRAPPER]",
+    "[TmSim]",
+    "[debug]",
+    "[info]",
+    "[INFO]",
+    "[DRVSTUB_LOG]",
+    "[ESL_TOP]",
+    "[Esl Top]",
+    "[Hardware]",
+    "[NOTE]",
+    "[FUSION]",
+    "[DVPP]",
+    "[UBDMA]",
+    "==",
+    "WARNING:",
+    "Warning:",
+    "Warning!",
+    "CONFIG STARS",
+    "Module STARS",
+    "SLLC CONNECT",
+    "Create ./log",
+    "Create ./run_log",
+    "Create ./log_ca",
+    "SoC unit ",
+    "SoC sub ",
+    "HHA->",
+    "DDR ",
+    "Reading DDR",
+    "Guide file:",
+    "Start to build",
+    "Start simulation",
+    "rank0_chip",  # 多 rank 日志里的 rankN_chipN_created 框架输出
+    "rankId:",
+    "chip type:",
+    "core count:",
+    "thread count:",
+    "chipNum:",
     "chipId ",
-    "Multi SoC", "All Chip", "can not find",
-    "DIE0", "DIE1", "DIE2", "DIE3",
-    "ESL_TOP:", "Esl Top]", "SMMU ",
-    "STARS_", "Submit request to",
+    "Multi SoC",
+    "All Chip",
+    "can not find",
+    "DIE0",
+    "DIE1",
+    "DIE2",
+    "DIE3",
+    "ESL_TOP:",
+    "Esl Top]",
+    "SMMU ",
+    "STARS_",
+    "Submit request to",
     # 白名单会覆盖 "First " / "z[" 等常见 bbit 输出，这里也列进来以便集中维护；
     # is_user_stdout_line() 会优先检查 _USER_STDOUT_WHITELIST，所以不会被"黑名单"误伤。
-    "First ", "z[",
+    "First ",
+    "z[",
 )
 
 # 在 _FRAMEWORK_PREFIXES 中被误伤的"常见 user stdout 样本"。
@@ -238,18 +274,10 @@ class PhaseDetector:
     _RE_CORE_INIT = re.compile(r"CoreWrapper \[DvcCore(\d+)\] init")
     _RE_CORE_BUILD = re.compile(r"CoreWrapper \[DvcCore(\d+)\] build")
     _RE_DIE_CREATED = re.compile(r"SoC unit rank(\d+)_chip(\d+)_die(\d+) Created")
-    _RE_BLOCK_START = re.compile(
-        r"\[block_start\].*AIV, task_id=(\d+), core_id=(\d+), block_id=(\d+)"
-    )
-    _RE_BLOCK_END = re.compile(
-        r"\[block_end\].*AIV, task_id=(\d+), core_id=(\d+), block_id=(\d+)"
-    )
-    _RE_TASK_DONE = re.compile(
-        r"\[TASK_DONE\] RTSQ_\d+ ACSQ_\d+ stream_id:(\d+), task_id:(\d+)"
-    )
-    _RE_HW_FINISH = re.compile(
-        r"parallel simulation finish\.\s*sim time:\s*([\d.]+)s"
-    )
+    _RE_BLOCK_START = re.compile(r"\[block_start\].*AIV, task_id=(\d+), core_id=(\d+), block_id=(\d+)")
+    _RE_BLOCK_END = re.compile(r"\[block_end\].*AIV, task_id=(\d+), core_id=(\d+), block_id=(\d+)")
+    _RE_TASK_DONE = re.compile(r"\[TASK_DONE\] RTSQ_\d+ ACSQ_\d+ stream_id:(\d+), task_id:(\d+)")
+    _RE_HW_FINISH = re.compile(r"parallel simulation finish\.\s*sim time:\s*([\d.]+)s")
     _RE_BLKDIM = re.compile(r"blkdim (\d+)")
     _RE_DDR = re.compile(r"==\s*(lpddr\w+\s+\d+\s*Mbps[^=]*)")
     _RE_WARN_INI = re.compile(r"UNKNOWN KEY '([^']+)'")
@@ -267,7 +295,7 @@ class PhaseDetector:
 
     def __init__(self):
         self.phase: Optional[str] = None
-        self.phase_idx: int = -1        # 在 _PHASE_ORDER 中的序号，-1 表示未初始化
+        self.phase_idx: int = -1  # 在 _PHASE_ORDER 中的序号，-1 表示未初始化
         self.phase_since: float = time.time()
         self.cores_init = 0
         self.cores_built = 0
@@ -276,7 +304,7 @@ class PhaseDetector:
         self.blocks_done = 0
         self.tasks_done = 0
         self.ddr_spec: Optional[str] = None
-        self.hw_sim_times: List[float] = []   # 保留所有 die 的 sim time，供 summary 使用
+        self.hw_sim_times: List[float] = []  # 保留所有 die 的 sim time，供 summary 使用
         self.blkdim: Optional[int] = None
         self.total_cores = 32  # Ascend950 典型配置：每 die 16 核 × 2 die × 2 rank
         self._seen_warnings: dict = {}
@@ -286,7 +314,7 @@ class PhaseDetector:
             return False
         new_idx = _PHASE_ORDER.index(p)
         if new_idx <= self.phase_idx:
-            return False   # 只进不退
+            return False  # 只进不退
         self.phase = p
         self.phase_idx = new_idx
         self.phase_since = time.time()
@@ -302,10 +330,7 @@ class PhaseDetector:
         if self.phase == PHASE_CORE_BUILD:
             return f"{self.cores_built}/{self.total_cores} cores built"
         if self.phase == PHASE_KERNEL_RUN:
-            return (
-                f"task {self.tasks_done}, "
-                f"blocks active={self.blocks_active} done={self.blocks_done}"
-            )
+            return f"task {self.tasks_done}, blocks active={self.blocks_active} done={self.blocks_done}"
         if self.phase == PHASE_KERNEL_DONE:
             return f"{self.tasks_done} task(s) done"
         return ""
@@ -340,11 +365,7 @@ class PhaseDetector:
             return events
 
         # model load
-        if (
-            s.startswith("== Loading")
-            or s.startswith("== lpddr")
-            or s.startswith("== Unable to load")
-        ):
+        if s.startswith("== Loading") or s.startswith("== lpddr") or s.startswith("== Unable to load"):
             if self._set_phase(PHASE_MODEL_LOAD):
                 events.append((EVENT_PHASE, f"phase {ARROW} loading model files"))
             m = self._RE_DDR.search(s)
@@ -360,9 +381,7 @@ class PhaseDetector:
             self.cores_init = max(self.cores_init, core_id + 1)
             self.total_cores = max(self.total_cores, self.cores_init)
             if self._set_phase(PHASE_CORE_INIT):
-                events.append(
-                    (EVENT_PHASE, f"phase {ARROW} core init (die {core_id // 16})")
-                )
+                events.append((EVENT_PHASE, f"phase {ARROW} core init (die {core_id // 16})"))
             return events
 
         # stars config
@@ -377,9 +396,7 @@ class PhaseDetector:
             core_id = int(m.group(1))
             self.cores_built = max(self.cores_built, core_id + 1)
             if self._set_phase(PHASE_CORE_BUILD):
-                events.append(
-                    (EVENT_PHASE, f"phase {ARROW} core build (die {core_id // 16})")
-                )
+                events.append((EVENT_PHASE, f"phase {ARROW} core build (die {core_id // 16})"))
             return events
 
         # smmu
@@ -405,9 +422,7 @@ class PhaseDetector:
             return events
 
         # soc ready
-        if s.startswith("Multi SoC in one chip Created") or s.startswith(
-            "All Chip In Rank"
-        ):
+        if s.startswith("Multi SoC in one chip Created") or s.startswith("All Chip In Rank"):
             if self._set_phase(PHASE_SOC_READY):
                 events.append((EVENT_PHASE, f"phase {ARROW} SoC ready, awaiting tasks"))
             return events
@@ -434,9 +449,7 @@ class PhaseDetector:
         if self._RE_TASK_DONE.search(s):
             self.tasks_done += 1
             if self._set_phase(PHASE_KERNEL_DONE):
-                events.append(
-                    (EVENT_PHASE, f"phase {ARROW} task {self.tasks_done - 1} done")
-                )
+                events.append((EVENT_PHASE, f"phase {ARROW} task {self.tasks_done - 1} done"))
             return events
 
         # hardware finish
@@ -445,9 +458,7 @@ class PhaseDetector:
             t = float(m.group(1))
             self.hw_sim_times.append(t)
             die_num = len(self.hw_sim_times) - 1
-            events.append(
-                (EVENT_INFO, f"hardware sim finished: {t:.2f}s (die {die_num})")
-            )
+            events.append((EVENT_INFO, f"hardware sim finished: {t:.2f}s (die {die_num})"))
             return events
 
         # shutdown
@@ -466,9 +477,7 @@ class PhaseDetector:
             count = self._seen_warnings.get(key, 0) + 1
             self._seen_warnings[key] = count
             if count == 1:
-                events.append(
-                    (EVENT_WARN, f"UNKNOWN KEY '{key}' (repeats will be suppressed)")
-                )
+                events.append((EVENT_WARN, f"UNKNOWN KEY '{key}' (repeats will be suppressed)"))
             return events
 
         if s.startswith(("WARNING:", "Warning:", "Warning!")):
@@ -482,8 +491,11 @@ class PhaseDetector:
         """返回 [(warning 原文, 命中次数), ...]，用于跑完后的最终汇总。
         已知无害 warnings 不在汇总中展示。"""
         return sorted(
-            ((msg, n) for msg, n in self._seen_warnings.items()
-             if not any(p in msg for p in self._KNOWN_HARMLESS_WARNINGS)),
+            (
+                (msg, n)
+                for msg, n in self._seen_warnings.items()
+                if not any(p in msg for p in self._KNOWN_HARMLESS_WARNINGS)
+            ),
             key=lambda kv: -kv[1],
         )
 
@@ -508,18 +520,18 @@ class ProcStats:
     rss_bytes: int = 0
     utime_ticks: int = 0
     stime_ticks: int = 0
-    num_cpu_ticks: int = 0      # utime + stime
-    cpu_pct: float = 0.0        # 相对单核；>100% 表示多核并行
+    num_cpu_ticks: int = 0  # utime + stime
+    cpu_pct: float = 0.0  # 相对单核；>100% 表示多核并行
 
     def rss_hr(self) -> str:
         b = self.rss_bytes
         if b < 1024:
             return f"{b}B"
-        if b < 1024 ** 2:
-            return f"{b/1024:.1f}K"
-        if b < 1024 ** 3:
-            return f"{b/1024/1024:.1f}M"
-        return f"{b/1024/1024/1024:.2f}G"
+        if b < 1024**2:
+            return f"{b / 1024:.1f}K"
+        if b < 1024**3:
+            return f"{b / 1024 / 1024:.1f}M"
+        return f"{b / 1024 / 1024 / 1024:.2f}G"
 
 
 def _read_proc_stat(pid: int) -> Tuple[int, int, int, str]:
@@ -532,7 +544,7 @@ def _parse_stat_data(data: str) -> Tuple[int, int, int, str]:
     """解析 /proc/*/stat 内容，返回 (utime, stime, num_threads, state)。"""
     # comm 字段可能含空格/括号，需从右侧 `)` 之后 split，避免把 "(a b)" 切碎。
     rparen = data.rfind(")")
-    fields = data[rparen + 2:].split()
+    fields = data[rparen + 2 :].split()
     # proc(5) 语义：fields[0] 对应第 3 项（我们已砍掉 pid + comm）。
     # 字段 14 utime → fields[11]； 字段 15 stime → fields[12]； 字段 20 num_threads → fields[17]。
     state = fields[0]
@@ -547,15 +559,13 @@ def _read_proc_pgid(pid: int) -> int:
     with open(f"/proc/{pid}/stat", "r", encoding="utf-8", errors="replace") as f:
         data = f.read()
     rparen = data.rfind(")")
-    fields = data[rparen + 2:].split()
+    fields = data[rparen + 2 :].split()
     return int(fields[2])
 
 
 def _read_thread_state(pid: int, tid: str) -> str:
     """从 /proc/{pid}/task/{tid}/stat 读线程状态码。"""
-    with open(
-        f"/proc/{pid}/task/{tid}/stat", "r", encoding="utf-8", errors="replace"
-    ) as f:
+    with open(f"/proc/{pid}/task/{tid}/stat", "r", encoding="utf-8", errors="replace") as f:
         return _parse_stat_data(f.read())[3]
 
 
@@ -752,12 +762,24 @@ def classify_health(
 
 # ------------------------------ Dashboard ------------------------------
 
+
 def _format_elapsed(s: float) -> str:
     m, sec = divmod(s, 60)
     if m >= 60:
         h, m = divmod(int(m), 60)
         return f"{h:02d}:{int(m):02d}:{int(sec):02d}"
     return f"{int(m):02d}:{sec:04.1f}"
+
+
+def _format_limit(seconds: float) -> str:
+    """把超时上限格式化为紧凑时长（7200 -> '2h'，1800 -> '30m'，90 -> '90s'）。"""
+    seconds = float(seconds)
+    if seconds <= 0:
+        return "0s"
+    for unit, size in (("h", 3600), ("m", 60)):
+        if seconds >= size and seconds % size == 0:
+            return f"{int(seconds // size)}{unit}"
+    return f"{seconds:g}s"
 
 
 class Dashboard:
@@ -789,11 +811,14 @@ class Dashboard:
         start_time: float,
         is_tty: Optional[bool] = None,
         process_alive_cb: Optional[Callable[[], bool]] = None,
+        timeout: float = 0.0,
     ):
         self.pid = pid
         self.log_path = log_path
         self.title = title
         self.start_time = start_time
+        self.timeout = float(timeout or 0.0)
+        self._timed_out = False
         self._is_tty = _IS_TTY if is_tty is None else is_tty
         self._process_alive = process_alive_cb or (lambda: True)
 
@@ -858,6 +883,21 @@ class Dashboard:
         if not self._is_tty:
             self._print_event_non_tty(ev)
 
+    def notify_timeout(self) -> None:
+        """超时终止后由 runner 调用：置 TIMEOUT 标记，并在事件流里留痕。"""
+        self._timed_out = True
+        self.push_event(
+            EVENT_ERROR,
+            f"simulation TIMEOUT after {_format_elapsed(time.time() - self.start_time)}: "
+            "process group terminated by npusim",
+        )
+
+    def _timeout_left(self) -> float:
+        """距超时剩余秒数；未启用超时返回 0。"""
+        if self.timeout <= 0:
+            return 0.0
+        return max(self.timeout - (time.time() - self.start_time), 0.0)
+
     # --------------- 查询 ---------------
 
     @property
@@ -909,9 +949,7 @@ class Dashboard:
         while True:
             self._last_stats = self.monitor.snapshot()
             stats = self._last_stats
-            zombie_count = (
-                stats.proc_states.get("Z", 0) + stats.thread_states.get("Z", 0)
-            )
+            zombie_count = stats.proc_states.get("Z", 0) + stats.thread_states.get("Z", 0)
             if not stats.alive or stats.process_count == 0 or zombie_count == 0:
                 break
             now = time.time()
@@ -945,29 +983,27 @@ class Dashboard:
             EVENT_ERROR: "error",
         }
         tag = tag_map.get(ev.level, ev.level)
-        prefix = (
-            USER_PREFIX + " "
-            if ev.level == EVENT_USER
-            else ""
-        )
-        sys.stdout.write(
-            f"[npusim {_format_elapsed(ev.elapsed_s)}] "
-            f"[{tag}] {prefix}{ev.message}\n"
-        )
+        prefix = USER_PREFIX + " " if ev.level == EVENT_USER else ""
+        sys.stdout.write(f"[npusim {_format_elapsed(ev.elapsed_s)}] [{tag}] {prefix}{ev.message}\n")
         sys.stdout.flush()
 
     def _maybe_heartbeat(self, health: str) -> None:
         if time.time() - self._last_heartbeat < self.NON_TTY_HEARTBEAT_S:
             return
         stats = self._last_stats
-        sys.stdout.write(
+        line = (
             f"[npusim {_format_elapsed(time.time() - self.start_time)}] "
             f"[heartbeat] signal={health} "
             f"phase={self.detector.phase or '-'} "
             f"pgid={stats.pgid or '-'} processes={stats.process_count} "
             f"threads={stats.threads} cpu_cores={stats.cpu_pct / 100.0:.1f} "
-            f"resident={stats.rss_hr()} log_lines={self._log_lines_total}\n"
+            f"resident={stats.rss_hr()} log_lines={self._log_lines_total}"
         )
+        if self.timeout > 0:
+            line += f" timeout_left={_format_elapsed(self._timeout_left())}"
+        if self._timed_out:
+            line += " TIMEOUT"
+        sys.stdout.write(line + "\n")
         sys.stdout.flush()
         self._last_heartbeat = time.time()
 
@@ -991,6 +1027,10 @@ class Dashboard:
     def _render_panel_lines(self, health: str) -> List[str]:
         stats = self._last_stats
         elapsed = _format_elapsed(time.time() - self.start_time)
+        if self._timed_out:
+            elapsed = _c(f"{elapsed}  {X_CHAR} TIMEOUT", RED + BOLD)
+        elif self.timeout > 0:
+            elapsed = f"{elapsed}  limit {_format_limit(self.timeout)}  left {_format_elapsed(self._timeout_left())}"
         phase_label = PHASE_LABELS.get(self.detector.phase or "", "(waiting)")
         progress = self.detector.progress_label()
         dot = _c(DOT_CHAR, _HEALTH_COLOR.get(health, WHITE))
@@ -1023,9 +1063,7 @@ class Dashboard:
         # 第 1 行：带标题的顶边
         header_label = title_line
         fill = max(inner - len(header_label) - 2, 0)
-        lines.append(
-            f"{BOX_TL}{BOX_H}{_c(header_label, BOLD + WHITE)}{BOX_H * fill}{BOX_TR}"
-        )
+        lines.append(f"{BOX_TL}{BOX_H}{_c(header_label, BOLD + WHITE)}{BOX_H * fill}{BOX_TR}")
         # 第 2 行：elapsed / health / phase / progress
         status_line = (
             f"{elapsed}   {dot} signal: {_c(health, _HEALTH_COLOR.get(health, WHITE))}"
@@ -1047,10 +1085,7 @@ class Dashboard:
             )
         )
         lines.append(
-            _row(
-                f"host              cpu {stats.cpu_pct / 100.0:4.1f} cores   "
-                f"memory resident {stats.rss_hr()}"
-            )
+            _row(f"host              cpu {stats.cpu_pct / 100.0:4.1f} cores   memory resident {stats.rss_hr()}")
         )
         lines.append(_row(f"proc states       {_format_state_counts(stats.proc_states)}"))
         lines.append(_row(f"thread states     {_format_state_counts(stats.thread_states)}"))
@@ -1133,9 +1168,7 @@ def _format_state_counts(states: Counter) -> str:
 
     parts = []
     ordered_states = list(_PROC_STATE_LABELS)
-    ordered_states.extend(
-        sorted(s for s in states if s not in _PROC_STATE_LABELS)
-    )
+    ordered_states.extend(sorted(s for s in states if s not in _PROC_STATE_LABELS))
     for state in ordered_states:
         count = states.get(state, 0)
         if count <= 0:

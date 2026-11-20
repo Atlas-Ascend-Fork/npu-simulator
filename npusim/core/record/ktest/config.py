@@ -30,3 +30,6 @@ class KtestConfig:
     model: str = "CA"
     core_id: str = ""
     feature_list: Optional[str] = None
+    timeout: float = 0.0
+    # 由 ktest() 在执行结束后回填（非输入参数）：仿真是否因超时被终止。
+    timed_out: bool = False

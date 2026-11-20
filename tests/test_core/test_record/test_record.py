@@ -217,6 +217,7 @@ class Stage3ExecuteTests(unittest.TestCase):
                 stderr_tail="",
                 returncode=0,
                 interrupted=False,
+                timed_out=False,
                 success=True,
             )
             self.r.record_dir = MagicMock()
@@ -252,6 +253,7 @@ class Stage3ExecuteTests(unittest.TestCase):
                 stderr_tail="",
                 returncode=1,
                 interrupted=False,
+                timed_out=False,
                 success=False,
             )
             self.r.record_dir = MagicMock()

@@ -33,6 +33,7 @@ from npusim.core.public.comm import (
     render_reference_benchmarks,
 )
 from npusim.core.public.typical_operator_times import TYPICAL_OPERATOR_TIMES
+from npusim.core.record.config import format_duration
 
 
 def fmt_accent(text: str, color: str = COLOR_CYAN) -> str:
@@ -86,6 +87,7 @@ def print_stage3_preamble(
     core_id: str,
     user_option: str,
     gen_report: str,
+    timeout: float = 0.0,
 ) -> None:
     print()
     print(render_reference_benchmarks(TYPICAL_OPERATOR_TIMES))
@@ -106,6 +108,8 @@ def print_stage3_preamble(
         print(f"   user-opt        {user_option}")
     if gen_report:
         print("   report          yes")
+    if timeout and timeout > 0:
+        print(f"   timeout         {format_duration(timeout)}")
 
 
 def print_start_banner() -> None:
@@ -117,7 +121,10 @@ def print_start_banner() -> None:
 
 
 def print_record_summary(state, success: bool) -> None:
-    if state._interrupted:
+    timed_out = bool(getattr(state, "_timed_out", False))
+    if timed_out:
+        status = fmt_accent("TIMEOUT", COLOR_YELLOW + STYLE_BOLD) if USE_COLOR else "TIMEOUT"
+    elif state._interrupted:
         status = fmt_accent("INTERRUPTED", COLOR_YELLOW + STYLE_BOLD) if USE_COLOR else "INTERRUPTED"
     elif success:
         status = fmt_accent("SUCCESS", COLOR_GREEN + STYLE_BOLD) if USE_COLOR else "SUCCESS"
@@ -126,6 +133,8 @@ def print_record_summary(state, success: bool) -> None:
 
     dash = "─" * 72
     header = f"Simulation {status}  ·  run time {state._last_run_elapsed:.1f}s"
+    if timed_out:
+        header += f"  ·  limit {getattr(state, 'timeout', 0.0):g}s"
     rc_text = fmt_returncode(state._last_returncode)
     if rc_text and not success:
         header += f"  ·  {rc_text}"
@@ -158,7 +167,16 @@ def print_record_summary(state, success: bool) -> None:
             if len(warnings) > 10:
                 print(f"  (... {len(warnings) - 10} more, see npusim.log)")
 
-    if state._interrupted and dash_ref is not None:
+    if timed_out:
+        print()
+        print("Timeout")
+        print(f"  limit     {getattr(state, 'timeout', 0.0):g}s")
+        print("  note      partial assets were archived and may be incomplete;")
+        print("            `npusim report` may fail on truncated artifacts")
+        print("  hint      rerun with a larger --timeout, or check for a hung kernel")
+        print("            (deadloop / sync-wait / comm stall)")
+
+    if (state._interrupted or timed_out) and dash_ref is not None:
         events = dash_ref.events
         phase = dash_ref.detector.phase or "(waiting)"
         progress = dash_ref.detector.progress_label()

@@ -140,6 +140,7 @@ class CannsimKtestStage3Tests(unittest.TestCase):
             m_run.return_value = MagicMock(
                 success=True,
                 interrupted=False,
+                timed_out=False,
                 stderr_tail="",
                 dashboard=None,
                 returncode=0,
