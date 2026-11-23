@@ -1,28 +1,31 @@
 # 贡献指南
 
-本项目欢迎广大开发者体验并参与贡献，在参与社区贡献之前，请参见[cann-community](https://gitcode.com/cann/community)了解行为准则，进行CLA协议签署，了解源码仓的贡献流程。
+本项目欢迎广大开发者体验并参与贡献。参与贡献前，请阅读社区[用户行为准则](https://gitcode.com/cann/community/blob/master/contributor/code-of-conduct.md)，按 [CLA 使用指南](https://gitcode.com/cann/infrastructure/blob/master/docs/cla/cla使用指南.md) 完成协议签署。
 
-开发者准备本地代码与提交PR时需要重点关注如下几点：
+完整的贡献流程、环境搭建、CI 门禁与合入说明请以根目录《[贡献指南](../../CONTRIBUTING.md)》为准，本文档仅作场景索引。
 
-1. 提交PR时，请按照PR模板仔细填写本次PR的业务背景、目的、方案等信息。
-2. 若您的修改不是简单的bug修复，而是涉及到新增特性、新增接口、新增配置参数或者修改代码流程等，请务必先通过Issue进行方案讨论，以避免您的代码被拒绝合入。若您不确定本次修改是否可被归为“简单的bug修复”，亦可通过提交Issue进行方案讨论。
+## 贡献场景
 
-开发者贡献场景主要包括：
+- **贡献新特性**：新建 `Requirement|需求/特性` 类 Issue 说明背景、价值与设计方案，经 Issue 方案讨论确认后开发并提交 PR。详见[贡献新特性](../../CONTRIBUTING.md#一贡献新特性)。
+- **Bug 修复**：新建 `Bug-Report|缺陷反馈` 类 Issue 描述问题，在评论框输入 `/assign` 或 `/assign @yourself` 认领后处理。详见[提交 Issue/处理 Issue 任务](https://gitcode.com/cann/community#提交issue处理issue任务)。
+- **文档纠错**：新建 `Documentation|文档反馈` 类 Issue 指出文档问题并认领修正。
+- **帮助解决他人 Issue**：在 Issue 中评论交流；若需代码修改，可 `/assign` 认领后跟踪解决。
 
-- Bug修复
+## 提交 PR 前
 
-    如果您在本项目中发现了某些Bug，希望对其进行修复，欢迎您新建Issue进行反馈和跟踪处理。
+1. 按照 [PR 模板](../../.gitcode/PULL_REQUEST_TEMPLATE.md) 完整填写业务背景、目的、方案、测试与兼容性。
+2. 非简单 bug 修复（新增特性、新增接口、新增配置参数或修改代码流程）请先通过 Issue 讨论，避免代码被拒绝合入。
+3. 若不确定是否属于「简单 bug 修复」，也请先提交 Issue 讨论。
 
-    您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Bug-Report|缺陷反馈` 类Issue对Bug进行描述，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行处理。
+## 本地验证
 
-- 文档纠错
+代码规范、自验证命令与失败排查请参见《[代码规范与本地验证指南](./development_guide.md)》。最小验证命令：
 
-    如果您在本项目中发现某些文档描述错误，欢迎您新建Issue进行反馈和修复。
+```bash
+ruff check npusim/ tests/
+ruff format --check --diff npusim/ tests/
+python -m pytest tests/ -v --tb=short
+bash .gitcode/scripts/py37_compat.sh 3.7
+```
 
-    您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Documentation|文档反馈` 类Issue指出对应文档的问题，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您纠正对应文档描述。
-
-- 帮助解决他人Issue
-
-    如果社区中他人遇到的问题您有合适的解决方法，欢迎您在Issue中发表评论交流，帮助他人解决问题和痛点，共同优化易用性。
-
-    如果对应Issue需要进行代码修改，您可以在Issue评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您，跟踪协助解决问题。
+CI 门禁通过 PR 评论 `compile` 或 `/compile` 触发；门禁通过后由 Committer 检视并标注 `/lgtm`，Maintainer 标注 `/approve` 后合入。
