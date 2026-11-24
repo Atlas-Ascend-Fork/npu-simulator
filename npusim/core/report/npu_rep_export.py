@@ -87,7 +87,7 @@ def _read_kernel_info(db_path: Path, index: int) -> Tuple[int, str]:
     launch_id = index
     kernel_name = db_path.stem
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        con = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
         try:
             row = con.execute("SELECT KernelInfoVal FROM KernelInfo WHERE KernelInfoAttr = 'launch_id'").fetchone()
             if row is not None and str(row[0]).strip():

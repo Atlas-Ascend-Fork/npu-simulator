@@ -25,6 +25,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 npu_rep_export_mod = importlib.import_module("npusim.core.report.npu_rep_export")
 report_mod = importlib.import_module("npusim.core.report.report")
 version_mod = importlib.import_module("npusim.version")
@@ -71,6 +73,52 @@ def _decode_rep_entries(rep_path: Path) -> dict:
         entries[name] = data[rep_offset : rep_offset + length]
         offset += struct.calcsize(_ENTRY_FORMAT)
     return entries
+
+
+@pytest.mark.parametrize("dirname", ["export", "pr#42", "pr?42", "pr%23", "export space目录"])
+@pytest.mark.parametrize("relative", [False, True])
+def test_kernel_info_mapping_preserves_database_path(tmp_path, monkeypatch, dirname, relative):
+    source = tmp_path / dirname
+    source.mkdir()
+    db_path = _write_contract_db(source / "chip #?%.db", kernel_name="My Kernel/1", launch_id="7")
+    original = db_path.read_bytes()
+    output_dir = tmp_path / "report"
+    results = output_dir / "results" / "0007_My_Kernel_1_reports"
+    results.mkdir(parents=True)
+    (results / "summary.json").write_bytes(b'{"summary": true}')
+    monkeypatch.chdir(tmp_path)
+    input_db = db_path.relative_to(tmp_path) if relative else db_path
+
+    with redirect_stdout(None):
+        npu_rep_export_mod.export_npu_rep(output_dir, input_db)
+
+    rep_path = results / "chip #?%.npu-rep"
+    assert rep_path.is_file()
+    entries = _decode_rep_entries(rep_path)
+    assert entries["summary.json"] == b'{"summary": true}'
+    assert b"cycles" in entries["Counter.csv"]
+    assert not (output_dir / rep_path.name).exists()
+    assert db_path.read_bytes() == original
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted([dirname, "report"])
+
+
+@pytest.mark.parametrize("name", ["no-info.db", "no-info#42.db", "no-info?42.db"])
+def test_missing_kernel_info_packs_csv_without_creating_other_databases(tmp_path, name):
+    db_path = tmp_path / name
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE Counter(Metric TEXT, Value INTEGER)")
+        connection.execute("INSERT INTO Counter VALUES ('cycles', 42)")
+    original = db_path.read_bytes()
+    output_dir = tmp_path / "report"
+
+    with redirect_stdout(None):
+        npu_rep_export_mod.export_npu_rep(output_dir, db_path)
+
+    entries = _decode_rep_entries(output_dir / (db_path.stem + ".npu-rep"))
+    assert b"cycles" in entries["Counter.csv"]
+    assert "manifest.json" in entries
+    assert db_path.read_bytes() == original
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted([name, "report"])
 
 
 class ExportNpuRepTests(unittest.TestCase):
