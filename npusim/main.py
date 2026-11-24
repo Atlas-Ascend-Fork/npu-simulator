@@ -233,7 +233,7 @@ def handle_record_command(args, parser):
         parser.error(f"the following arguments are required: {', '.join(missing)}")
 
     cfg = RecordConfig(
-        user_app=Path(args.user_app),
+        user_app=args.user_app,
         output=Path(args.output),
         soc_version=args.soc_version,
         gen_report=normalize_gen_report(args.gen_report),

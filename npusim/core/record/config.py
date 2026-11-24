@@ -146,7 +146,7 @@ def normalize_sim_mode(raw) -> str:
 
 def build_record_config_from_args(args) -> RecordConfig:
     return RecordConfig(
-        user_app=Path(args.user_app),
+        user_app=args.user_app,
         output=Path(args.output),
         soc_version=args.soc_version,
         gen_report=normalize_gen_report(args.gen_report),
