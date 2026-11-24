@@ -40,7 +40,7 @@ A column existing in the schema does not guarantee that its values are available
 |---|---|---|
 | Assembly listing and metric cells | `AsmMetrics` | Static PCs with aggregated dynamic metrics |
 | Source line metric cells | `SourceLineMetrics` | Aggregation by `(FileId, LineNum)` |
-| Source file list | `SourceFiles` | File identity and debug path |
+| Source file list and full text | `SourceFiles` | File identity, debug path and complete document |
 | Source text fragments | `DebugInfo` + `SourceLines` | Available text for mapped source positions |
 | Bidirectional Source/Assembly selection | `SourceInstructions` + `DebugInfo` | PC to file/line mapping, independent of execution |
 | Function labels/ranges | `Functions` | `FunctionAddr`, `FunctionSize`, `FunctionName` |
@@ -96,8 +96,8 @@ Source text is read by numbered file line, stripped and deduplicated by text.
 `SourceLines` is therefore neither an ordered file nor a complete file snapshot.
 Two different positions, even in different files, can reference the same text ID.
 Unmapped comments/blank lines and original indentation cannot be recovered
-reliably from this table. For a complete editor document, the host UI needs an
-explicit source-file resolver or a separately supplied full-text bundle.
+reliably from this table. Use `SourceFiles.SourceFileText` for the complete
+document; keep `SourceLines` for the existing fragment/mapping contract.
 Never interpret an absolute producer path as permission to read arbitrary files
 on the user's machine; source resolution belongs to the host's own policy.
 
@@ -267,8 +267,9 @@ for operator duration or infer a core utilization from instruction count.
   disabled pending helper-contract adaptation. Their tables/columns remain;
   show unavailable data as unavailable. Other optional analyzers can also be
   disabled or fail: inspect `AnalysisState` and actual data availability.
-- No full inline-frame-to-PC source map or complete source-file text bundle is
-  exported automatically. A UI source resolver is required for full documents.
+- Full source documents are available in `SourceFiles.SourceFileText` when
+  the producer could read them during report generation. Inline frame metadata
+  remains limited to the existing source mappings.
 - Aggregated views have no arbitrary runtime core filter and inherit the
   existing join/grouping semantics described above.
 
@@ -286,17 +287,66 @@ missing-value semantics, and parse nested JSON fields separately. Preserve
 64-bit composite IDs exactly (e.g. BigInt or strings in JavaScript); do not
 round them through an unsafe Number conversion.
 
-The archive contains exported rows, not the raw SQLite file and not the
-producer's filesystem. Mapped source text fragments can be present in
-`SourceLines.csv`; that does not embed every original `.asc`/`.h` file.
+The archive contains exported rows, not the raw SQLite file or a complete
+filesystem snapshot. Full documents are embedded in the `SourceFileText` column
+of `SourceFiles.csv`. Only paths listed in `SourceFiles` are considered; the
+producer does not scan the project or discover additional includes.
 Source/Assembly HTML is absent by design in this branch. The retained
 `roofline.json` and Roofline CSV tables describe a separate analysis contract.
+
+## Full source documents: `SourceFiles.SourceFileText`
+
+New report databases store complete source text in the nullable
+`SourceFiles.SourceFileText` column. The existing CSV exporter carries the column
+into `SourceFiles.csv` inside each kernel's `.npu-rep`.
+
+| Column | SQLite type | Meaning |
+|---|---|---|
+| `SourceFileId` | `INTEGER` | Existing file identity within this launch |
+| `SourceFilePath` | `VARCHAR(200)` | Existing debug/source path |
+| `SourceFileText` | `TEXT` | Complete document; `NULL` if unavailable |
+
+```sql
+SELECT SourceFileId, SourceFilePath, SourceFileText
+FROM SourceFiles
+ORDER BY SourceFileId;
+```
+
+Join `DebugInfo.SourceFileId` directly to this row. A `DebugInfoLineNum` of 27
+refers to the original 1-based line 27 of `SourceFileText`; `SourceLineId` is
+still a deduplicated fragment ID and is not an index into the full document.
+Files with the same basename remain separate because their IDs/paths differ.
+
+- Comments, blank lines, indentation, CRLF/LF, BOM and the final newline are
+  preserved in the text. Input is decoded as UTF-8 with replacement for invalid
+  byte sequences, matching the existing source-line reader; this is text storage,
+  not a byte-for-byte snapshot of a non-UTF-8 file.
+- The snapshot is read after analysis, including paths added by optional
+  analyzers, before report generation/export. It represents files at report
+  generation time, not at compilation or recording time. Keep sources matched
+  to the compiled binary.
+- An empty file is an empty string in SQLite. Missing, unreadable or non-regular
+  files produce a warning and `NULL`; other files remain available.
+- The existing CSV exporter represents both `NULL` and an empty string as an
+  empty field. CSV consumers cannot distinguish these two cases from this column
+  alone. Nonempty source text is exported in full without truncation.
+- CSV fields can contain newlines and quotes. Use a real CSV parser, not
+  line splitting, and allow large fields (for Python's `csv` reader, raise
+  `csv.field_size_limit` when necessary).
+- Once the report is packed, displaying embedded source text does not require
+  the original paths to exist on the consumer's machine.
+
+The column is created when report analysis creates `SourceFiles`. If an
+already analyzed database has the older schema, re-reporting preserves that
+schema and continues to export its source mappings. Readers can detect
+`SourceFileText` by checking the CSV header and use the existing source
+fragments when the column is absent.
 
 ## Suggested UI loading sequence
 
 1. Select the kernel/launch and inspect the archive/export manifest.
-2. Load source/debug mapping and static instructions; load complete source text
-   through a host resolver if supplied.
+2. Load source/debug mapping and static instructions. Use `SourceFiles.SourceFileText`
+   for complete documents and a host resolver only when that text is unavailable.
 3. Build the two correlation indexes with `(report, file, 1-based line)` keys.
 4. Attach `AsmMetrics` by PC and `SourceLineMetrics` by `(FileId, LineNum)`.
 5. Add optional hints, function/block decorations, IPC and summary charts.

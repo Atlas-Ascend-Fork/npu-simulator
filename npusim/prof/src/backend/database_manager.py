@@ -15,6 +15,8 @@
 
 from typing import List
 from dataclasses import astuple
+from pathlib import Path
+import logging as log
 
 import npusim.prof.src.common.utils as utils
 from npusim.prof.src.common.biprof_constants import unit_map
@@ -38,6 +40,29 @@ from npusim.prof.src.backend.elf_object_reader import (
 
 
 class BackendDBManager:
+    @staticmethod
+    def save_source_file_texts() -> None:
+        """Snapshot full files after analyzers have finished adding source paths."""
+        columns = database_handler.execute("PRAGMA table_info(SourceFiles)").fetchall()
+        if not any(column["name"] == "SourceFileText" for column in columns):
+            return
+
+        rows = database_handler.execute("SELECT SourceFileId, SourceFilePath FROM SourceFiles").fetchall()
+        for row in rows:
+            text = None
+            path = Path(row["SourceFilePath"])
+            try:
+                if not path.is_file():
+                    raise OSError("Source file is missing or is not a regular file")
+                with path.open(encoding="utf-8", errors="replace", newline="") as source:
+                    text = source.read()
+            except (OSError, ValueError) as exc:
+                log.warning("Cannot read full source file %s: %s", path, exc)
+            database_handler.execute(
+                "UPDATE SourceFiles SET SourceFileText=? WHERE SourceFileId=?",
+                (text, row["SourceFileId"]),
+            )
+
     @staticmethod
     def _save_sections(sections: List[Section]) -> None:
         database_handler.executemany(

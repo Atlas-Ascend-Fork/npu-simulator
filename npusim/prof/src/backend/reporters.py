@@ -194,6 +194,11 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
             hinter.register_hints()
             hinter.run_hints()
 
+            with StageReporter("Save full source texts"):
+                BackendDBManager.save_source_file_texts()
+                # Tracing workers reconnect to the DB; publish the snapshot first.
+                database_handler.commit()
+
             ret += processor.generate_chrome_tracing()
             if biprof_ctx.vf_report_json:
                 export_vf_report_json(
