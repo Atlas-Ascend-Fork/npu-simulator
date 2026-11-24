@@ -380,34 +380,34 @@ def _build_detection_mapper(export_abs: Path, output_abs: Path, object_file: Opt
     return _prepare_source_mapper(cache_path, cache_object, device_pcs_by_kernel)
 
 
+def _write_detection_report(path: Path, text: str) -> bool:
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as error:
+        print_error(f"Cannot write detection report {path}: {error}")
+        return False
+    return True
+
+
 def _run_sync_detection(export_abs: Path, output_abs: Path, mapper) -> bool:
     """执行同步指令检测并写出报告；缺少 helper record DB 时跳过而非失败。"""
+    output = output_abs / "sync_instruction_detection_report.txt"
     if not _has_record_db(export_abs):
         print_warn("sync detection skipped: no cannsim_helper record DB")
-        (output_abs / "sync_instruction_detection_report.txt").write_text(
-            "[sync_instruction_detection] Skipped: no cannsim_helper record DB.\n",
-            encoding="utf-8",
-        )
-        return True
+        return _write_detection_report(output, "[sync_instruction_detection] Skipped: no cannsim_helper record DB.\n")
 
     try:
         hits = _sync_run(str(export_abs))
         _sync_annotate(hits, mapper)
-    except (OSError, sqlite3.Error, ValueError) as e:
-        print_error(f"sync_instruction_detection failed: {e}")
-        _out = output_abs / "sync_instruction_detection_report.txt"
-        _out.write_text(f"[sync_instruction_detection] detection failed: {e}\n", encoding="utf-8")
+    except (OSError, sqlite3.Error, ValueError) as error:
+        print_error(f"sync_instruction_detection failed: {error}")
+        _write_detection_report(output, f"[sync_instruction_detection] detection failed: {error}\n")
         return False
 
-    _out = output_abs / "sync_instruction_detection_report.txt"
-    try:
-        _out.write_text(_sync_format_text(hits), encoding="utf-8")
-        print_info(f"sync_instruction_detection: {len(hits)} violation(s) -> {_out}")
-    except OSError as e:
-        print_error(f"sync_instruction_detection failed: {e}")
-        _out.write_text(f"[sync_instruction_detection] detection failed: {e}\n", encoding="utf-8")
+    if not _write_detection_report(output, _sync_format_text(hits)):
+        _write_detection_report(output, "[sync_instruction_detection] detection failed: cannot write report.\n")
         return False
-
+    print_info(f"sync_instruction_detection: {len(hits)} violation(s) -> {output}")
     return True
 
 
@@ -417,23 +417,19 @@ def _run_data_race_detection(export_abs: Path, output_abs: Path, mapper) -> bool
     同步检测以 helper record DB 作为门控，本检测不以此为前置条件；
     输入缺失时只报告零命中，不作为失败。
     """
-    _out = output_abs / "data_race_detection_report.txt"
+    output = output_abs / "data_race_detection_report.txt"
     try:
         hits = _race_run(str(export_abs))
         _race_annotate(hits, mapper)
-    except (OSError, sqlite3.Error, ValueError) as e:
-        print_error(f"data_race_detection failed: {e}")
-        _out.write_text(f"[data_race_detection] detection failed: {e}\n", encoding="utf-8")
+    except (OSError, sqlite3.Error, ValueError) as error:
+        print_error(f"data_race_detection failed: {error}")
+        _write_detection_report(output, f"[data_race_detection] detection failed: {error}\n")
         return False
 
-    try:
-        _out.write_text(_race_format_text(hits), encoding="utf-8")
-        print_info(f"data_race_detection: {len(hits)} violation(s) -> {_out}")
-    except OSError as e:
-        print_error(f"data_race_detection failed: {e}")
-        _out.write_text(f"[data_race_detection] detection failed: {e}\n", encoding="utf-8")
+    if not _write_detection_report(output, _race_format_text(hits)):
+        _write_detection_report(output, "[data_race_detection] detection failed: cannot write report.\n")
         return False
-
+    print_info(f"data_race_detection: {len(hits)} violation(s) -> {output}")
     return True
 
 

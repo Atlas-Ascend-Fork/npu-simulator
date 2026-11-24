@@ -108,6 +108,45 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(report_mod._resolve_object_file(root, None), str(app))
             self.assertEqual(report_mod._resolve_object_file(root, "explicit.o"), "explicit.o")
 
+    def test_failed_detection_report_write_records_fallback(self):
+        self._check_detection_write_failure(persistent=False)
+
+    def test_unwritable_detection_report_does_not_escape(self):
+        self._check_detection_write_failure(persistent=True)
+
+    def _check_detection_write_failure(self, persistent):
+        failures = (
+            (report_mod._run_sync_detection, "_sync", "sync_instruction_detection"),
+            (report_mod._run_data_race_detection, "_race", "data_race_detection"),
+        )
+        for run, prefix, name in failures:
+            with self.subTest(detection=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                output = root / f"{name}_report.txt"
+                original_write = Path.write_text
+                attempts = []
+
+                def write(path, text, **kwargs):
+                    if path == output:
+                        attempts.append(text)
+                        if persistent or len(attempts) == 1:
+                            raise OSError("write failed")
+                    return original_write(path, text, **kwargs)
+
+                with patch.object(report_mod, "_has_record_db", return_value=True), patch.object(
+                    report_mod, prefix + "_run", return_value=[]
+                ), patch.object(report_mod, prefix + "_annotate"), patch.object(
+                    report_mod, prefix + "_format_text", return_value="normal report"
+                ), patch.object(Path, "write_text", write), patch.object(report_mod, "print_error"):
+                    self.assertFalse(run(root, root, None))
+
+                self.assertEqual(len(attempts), 2)
+                self.assertIn("detection failed", attempts[-1])
+                if persistent:
+                    self.assertFalse(output.exists())
+                else:
+                    self.assertIn("detection failed", output.read_text(encoding="utf-8"))
+
     def test_report_rejects_wrong_contract(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
