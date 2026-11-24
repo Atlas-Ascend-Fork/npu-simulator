@@ -280,13 +280,12 @@ def main():
         $ npusim record ./app -s Ascend950 -o ./output -u "--input data.json"
         $ npusim record -c /path/to/case -o ./output
         $ npusim record ./app -s Ascend950 -o ./output --timeout 7200
-        $ npusim report -e ./output/sim -o ./output/trace.json
+        $ npusim report -e /path/to/npusim_run -o ./output/reports
 
     Note:
         - Input app must be a valid AscendOps-built executable.
         - Output directories are auto-created.
-        - `trace.json` is compatible with Chrome tracing tools.
-        - Advanced reporting features (e.g., HTML, diagrams) are planned but not yet available.
+        - Report output includes per-core Chrome Tracing JSON files.
     """
 
     print(welcome)
