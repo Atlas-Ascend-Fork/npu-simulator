@@ -104,9 +104,6 @@ from npusim.prof.src.backend.analyzers.david.vf_simt_ipc_analyzer import (
 from npusim.prof.src.backend.analyzers.david.scalar_ipc_analyzer import (
     Ascend950ScalarInstructionPerCycleAnalyzer,
 )
-from npusim.prof.src.backend.analyzers.david.scalar_ipc_dynamic_analyzer import (
-    Ascend950ScalarInstructionPerCycleDynamicAnalyzer,
-)
 from npusim.prof.src.backend.analyzers.david.critical_path_analyzer import (
     CriticalPathAnalyzer,
 )
@@ -177,7 +174,6 @@ class AnalyzerManager(AnalyzerManagerBase):
             Ascend950SIMDRegionTracingAnalyzer,
             *([Ascend950VFIPCAnalyzer, Ascend950VFSimtIPCAnalyzer] if biprof_ctx.vec_ipc else []),
             Ascend950ScalarInstructionPerCycleAnalyzer,
-            *([Ascend950ScalarInstructionPerCycleDynamicAnalyzer] if biprof_ctx.scalar_ipc else []),
             Ascend950UnitUtilizationAnalyzer,
             Ascend950SubqueueUtilizationAnalyzer,
             *([Ascend950TraceBubbleAnalyzer] if biprof_ctx.bubble else []),

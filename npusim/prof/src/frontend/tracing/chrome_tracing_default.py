@@ -35,7 +35,6 @@ from npusim.prof.src.common.biprof_enum import (
 from npusim.prof.src.common.biprof_constants import (
     SYNCHRO_INSTRS,
     SAMPLING_PIPES_TO_SUBCORES,
-    VfSimtInstrTypes,
 )
 from npusim.prof.src.backend.database import database_handler
 from npusim.prof.src.backend.database_manager import BackendDBManager
@@ -56,7 +55,6 @@ from npusim.prof.src.backend.analyzers.pipe_dependency_analyzer import (
 )
 from npusim.prof.src.common.biprof_constants import (
     memory_size_map,
-    VfInstrTypes,
 )
 
 TraceId = int
@@ -641,23 +639,13 @@ class DatabaseManager:
                 SIMTExecutionMasks.BranchEfficiency,
                 SubQueueTypes.SubQueueType AS SubQueueType,
 
-                ScalarIpcDynamic.IPC AS ScalarIPC,
-
                 VfIPC.ScalarIPC AS VFScalarIPC,
                 VfIPC.ExecIPC AS VFExecIPC,
                 VfIPC.LdStIPC AS VFLdStIPC,
 
-                VfIPCDynamic.ScalarIPC AS InVFScalarIPC,
-                VfIPCDynamic.ExecIPC AS InVFExecIPC,
-                VfIPCDynamic.LdStIPC AS InVFLdStIPC,
-
                 VfSimtIPC.ExecIPC AS VFSimtExecIPC,
                 VfSimtIPC.LdStIPC AS VFSimtLdStIPC,
-                VfSimtIPC.BranchIPC AS VFSimtBranchIPC,
-
-                VfSimtIPCDynamic.ExecIPC AS InVFSimtExecIPC,
-                VfSimtIPCDynamic.LdStIPC AS InVFSimtLdStIPC,
-                VfSimtIPCDynamic.BranchIPC AS InVFSimtBranchIPC
+                VfSimtIPC.BranchIPC AS VFSimtBranchIPC
         FROM ExecutedInstructions
         {"INNER" if biprof_ctx.object_file else "LEFT"} JOIN SourceInstructions
         ON ExecutedInstructions.SourceInstrAddr=
@@ -698,16 +686,10 @@ class DatabaseManager:
         ON MmadParams.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN FixpParams
         ON FixpParams.ExecInstrId=ExecutedInstructions.ExecInstrId
-        LEFT JOIN ScalarIpcDynamic
-        ON ScalarIpcDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN VfIPC
         ON VfIPC.ExecInstrId=ExecutedInstructions.ExecInstrId
-        LEFT JOIN VfIPCDynamic
-        ON VfIPCDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN VfSimtIPC
         ON VfSimtIPC.ExecInstrId=ExecutedInstructions.ExecInstrId
-        LEFT JOIN VfSimtIPCDynamic
-        ON VfSimtIPCDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN SIMTExecutionMasks
         ON SIMTExecutionMasks.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN CallStackIDs
@@ -1147,12 +1129,8 @@ class InstrTraceBuilder(IBaseTraceBuilder):
 
         instr_type = InstrType(instr["TypeId"])
 
-        if instr_type == InstrType.SCALAR:
-            instr_attrs.append(
-                ("ipc_value", ChromeTracingUtils.round_or_none(instr["ScalarIPC"], 5)),
-            )
         # SIMD/SIMT Vector instruction attributes
-        elif instr_type in [
+        if instr_type in [
             InstrType.RVECEX,
             InstrType.RVECLP,
             InstrType.RVECSU,
@@ -1185,40 +1163,6 @@ class InstrTraceBuilder(IBaseTraceBuilder):
                     ("simt_processed_bytes", instr["SIMTLdStProcessedBytes"]),
                 ]
             )
-
-            if is_simt:
-                if instr_type in VfSimtInstrTypes["Execution"]:
-                    rvec_ipc_attr = (
-                        "exec_ipc",
-                        ChromeTracingUtils.round_or_none(instr["InVFSimtExecIPC"], 5),
-                    )
-                elif instr_type in VfSimtInstrTypes["Load/Store"]:
-                    rvec_ipc_attr = (
-                        "load_store_ipc",
-                        ChromeTracingUtils.round_or_none(instr["InVFSimtLdStIPC"], 5),
-                    )
-                else:  # elif instr_type in VfSimtInstrTypes["Branch"]
-                    rvec_ipc_attr = (
-                        "branch_ipc",
-                        ChromeTracingUtils.round_or_none(instr["InVFSimtBranchIPC"], 5),
-                    )
-            else:
-                if instr_type in VfInstrTypes["Scalar"]:
-                    rvec_ipc_attr = (
-                        "scalar_ipc",
-                        ChromeTracingUtils.round_or_none(instr["InVFScalarIPC"], 5),
-                    )
-                elif instr_type in VfInstrTypes["Execution"]:
-                    rvec_ipc_attr = (
-                        "exec_ipc",
-                        ChromeTracingUtils.round_or_none(instr["InVFExecIPC"], 5),
-                    )
-                else:  # elif instr_type in VfInstrTypes["Load/Store"]
-                    rvec_ipc_attr = (
-                        "load_store_ipc",
-                        ChromeTracingUtils.round_or_none(instr["InVFLdStIPC"], 5),
-                    )
-            instr_attrs.append(rvec_ipc_attr)
 
         # MTE (DMA MOV) instruction attributes
         elif instr_type in [

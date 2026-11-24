@@ -49,7 +49,7 @@ A column existing in the schema does not guarantee that its values are available
 | Performance Hints | `InstructionHintsView`, `SourceLineHintsView`, `KernelHintsView` | Instruction, line and kernel hints |
 | Optional call hierarchy | `CallStackIDs`, `CallStacks`, `CallFunctions`, `CallGraph`, `CallGraphMetrics` | Stack paths and call metrics |
 | Operator summary | `KernelInfo`, `summary.json` | Identity, frequency, counts and timing |
-| Summary diagrams | Histogram/IPC views listed below | Chart series |
+| Summary diagrams | Histogram views listed below | Chart series |
 
 Do not reconstruct Source/Assembly metrics from tracing JSON if the aggregate
 views are available. Tracing describes individual executions; these views use
@@ -168,7 +168,7 @@ underlying execution tables; filtering the already aggregated view is insufficie
 | `LiveGPRegisters`, `LiveSharedRegisters` | **SUM** | **MAX** | Current view semantics; register counts, not occupancy |
 | `BranchEfficiency` | AVG over positive masks | Same | Percent, already 0–100 |
 | `WarpOccupancy` | AVG | AVG | Fraction; legacy HTML multiplied by 100 for percent display |
-| `ScalarIPC`, `ExecIPC`, `LdStIPC`, `BranchIPC` | AVG rounded to 2 decimals | Not columns of this view | Instructions/cycle from `IPCAsmMetrics` |
+| `ScalarIPC`, `ExecIPC`, `LdStIPC`, `BranchIPC` | AVG rounded to 2 decimals | Not columns of this view | Aggregate IPC from VF and VF_SIMT invocations in `IPCAsmMetrics` |
 | `VfSimtTidX/Y/Z`, `VfSimtRegNum` | Invocation metadata | Not columns of this view | Optional launch dimensions / allocated registers |
 | `Active`, `Stall`, `EmptyTicks`, `MemoryStall`, `ExecutionStall`, `QueueFullStall`, `SyncStall`, `InstrFetchStall`, `PipeActive` | SUM | SUM | Producer sampling/stall counters; not interchangeable with measured instruction duration |
 | `SIMDStallsJson` | `SIMDStallsByAddr.StallsJson` | `SIMDStallsByLine.StallsJson` | Serialized reason-to-value object; parse as JSON |
@@ -251,8 +251,8 @@ The plain displayed instruction number is not globally unique across cores.
 | `PipeUtilizationHist` | `PipeName`, `CoreName`, `Utilization` (fraction; percent display ×100) |
 | `AiCoreOccupancy` | `CoreId`, `CoreTypeId`, `TickStart`, `TickEnd`; observed span, not a utilization percentage |
 | `BasicBlockCountDiagram` | `Name`, `ExeCount`; block-start execution count |
-| `ScalarIpcDynamic` | Optional scalar IPC series |
-| `VfIPCDynamicView`, `VfSimtIPCDynamicView` | Optional VF IPC window series |
+| `KernelInfo` | Overall scalar IPC in the `scalar_ipc` entry when available |
+| `VfIPC`, `VfSimtIPC` | Aggregate IPC for each VF or VF_SIMT invocation |
 
 Read frequency and operator timing from `KernelInfo`; `summary.json` provides
 additional prepared summary series. Do not substitute instruction-time sums

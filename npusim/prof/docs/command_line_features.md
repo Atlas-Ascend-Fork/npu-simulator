@@ -16,9 +16,9 @@ files. No collection category supplies missing debug information.
 
 | Feature | Required `CANNSIM_COLLECT` | Input / derived data | Consumer / output |
 | --- | --- | --- | --- |
-| Base report (always enabled) | `instr,ccu,simt,spr` | Instructions/metadata, `DispatchTime`, `SIMTRegisterRead`, `SprWriteEvents`; matching device ELF/DWARF for source correlation | Base analyses, queue/dispatch statistics, SIMT GM address metrics, SPR annotations and Source/Assembly tables |
-| `scalar-ipc` | `instr` | Instruction issue/end times | `Ascend950ScalarInstructionPerCycleDynamicAnalyzer`, `ScalarIpcDynamic` |
-| `vec-ipc` | `instr` | Instruction timing and VF IDs in `ExtendParams` | `Ascend950VFIPCAnalyzer`, `Ascend950VFSimtIPCAnalyzer`; VF IPC and dynamic views |
+| Base report (always enabled) | `instr,ccu,simt,spr` | Instructions/metadata, `DispatchTime`, `SIMTRegisterRead`, `SprWriteEvents`; matching device ELF/DWARF for source correlation | Base analyses, overall scalar IPC, queue/dispatch statistics, SIMT GM address metrics, SPR annotations and Source/Assembly tables |
+| `scalar-ipc` | Covered by the base report | Instruction timing and dispatch times when available | Compatibility feature name for overall scalar IPC in `KernelInfo` |
+| `vec-ipc` | `instr` | Timing and instruction groups within each vector-function invocation | Aggregate IPC in `VfIPC` and `VfSimtIPC` |
 | `simd-perf` | `instr,pmu` | `VfPMUValues`, `VfPMUMetrics`, `VfPMUSummary` and their aggregation views | `VfPMUAnalyzer`; VF/subcore top-down metrics |
 | `simd-sampling` | `instr,simd` | `SIMDSamplingStats`, `SIMDStallReasonTypes`, instruction IDs; object/DWARF for source labels | SIMD sampling stall statistics / timeline |
 | `memory-utilization` | `instr,mem` | Local `MemoryRWAccesses`, joined to instructions | Memory utilization states and memory heatmap layout/cells |

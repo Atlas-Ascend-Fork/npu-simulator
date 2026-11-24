@@ -70,19 +70,3 @@ CREATE TABLE UnitUtilization(
     CoreId INTEGER NOT NULL,
     CoreTypeId INTEGER NOT NULL
 );
-
-CREATE TABLE ScalarIpcDynamic(
-    CoreId INTEGER NOT NULL,
-    CoreTypeId INTEGER NOT NULL,
-    ExecInstrId INTEGER NOT NULL PRIMARY KEY,
-    Tick INTEGER NOT NULL,
-    IPC REAL NOT NULL
-);
-
-CREATE TABLE VfIPCDynamic(
-    ExecInstrId INTEGER NOT NULL UNIQUE,  -- of some instruction "in" VF
-    WindowStartTick INTEGER NOT NULL,
-    ScalarIPC REAL NOT NULL,
-    ExecIPC REAL NOT NULL,
-    LdStIPC REAL NOT NULL
-);

@@ -21,7 +21,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional, Any, Dict, List, Tuple, Union
 from npusim.prof_demo.enums import CoreType, InstrType, InstrQueueType, CTSectionType
-from npusim.prof_demo.analysis.vf import VF_CLASS_SCALAR, VF_CLASS_EXECUTION, VF_CLASS_LOAD_STORE
 from npusim.prof_demo.analysis.dependencies import PipeDependencyCategory
 from npusim.prof_demo.database import database_handler, BackendDBManager
 from npusim.prof_demo.config import config
@@ -223,7 +222,6 @@ class DatabaseManager:
                 ExecutedInstructions.InstrTypeId AS TypeId,
                 ExecutedInstructions.ExecInstrIsSynchronization
                     AS IsSynchronization,
-                ExecutedInstructions.ExecInstrVfClass AS VfClass,
                 {_group_scoped_projection("processed_bytes", "VecProcessedBytes", VECTOR_PARAM_INSTRS)},
                 {_group_scoped_projection("processed_elements", "VecProcessedElements", VECTOR_PARAM_INSTRS)},
                 {_group_scoped_projection("vector_utilization", "VectorUtilization", VECTOR_PARAM_INSTRS)},
@@ -299,15 +297,9 @@ class DatabaseManager:
 
                 EP.branch_efficiency AS BranchEfficiency,
 
-                ScalarIpcDynamic.IPC AS ScalarIPC,
-
                 VfIPC.ScalarIPC AS VFScalarIPC,
                 VfIPC.ExecIPC AS VFExecIPC,
                 VfIPC.LdStIPC AS VFLdStIPC,
-
-                VfIPCDynamic.ScalarIPC AS InVFScalarIPC,
-                VfIPCDynamic.ExecIPC AS InVFExecIPC,
-                VfIPCDynamic.LdStIPC AS InVFLdStIPC,
 
                 VfSimtIPC.ExecIPC AS VFSimtExecIPC,
                 VfSimtIPC.LdStIPC AS VFSimtLdStIPC,
@@ -317,12 +309,8 @@ class DatabaseManager:
         ON ExecutedInstructions.ExecInstrId=EP.ExecInstrId
         LEFT JOIN main.DmaMovProcessedBytes
         ON ExecutedInstructions.ExecInstrId=DmaMovProcessedBytes.ExecInstrId
-        LEFT JOIN ScalarIpcDynamic
-        ON ScalarIpcDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN main.VfIPC
         ON VfIPC.ExecInstrId=ExecutedInstructions.ExecInstrId
-        LEFT JOIN VfIPCDynamic
-        ON VfIPCDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
         LEFT JOIN main.VfSimtIPC
         ON VfSimtIPC.ExecInstrId=ExecutedInstructions.ExecInstrId
         WHERE ExecutedInstructions.ExecInstrCoreId=:core_id AND
@@ -486,12 +474,8 @@ class InstrTraceBuilder(IBaseTraceBuilder):
 
         instr_type = InstrType(instr["TypeId"])
 
-        if instr_type == InstrType.SCALAR:
-            instr_attrs.append(
-                ("ipc_value", ChromeTracingUtils.round_or_none(instr["ScalarIPC"], 5)),
-            )
         # SIMD instruction attributes; SIMT leaf events are filtered upstream.
-        elif instr_type in [InstrType.RVECEX, InstrType.RVECLP, InstrType.RVECSU, InstrType.RVECST, InstrType.RVECLD]:
+        if instr_type in [InstrType.RVECEX, InstrType.RVECLP, InstrType.RVECSU, InstrType.RVECST, InstrType.RVECLD]:
             vec_util = ChromeTracingUtils.percents_or_none(instr["VectorUtilization"])
             branch_efficiency = ChromeTracingUtils.percents_or_none(instr["BranchEfficiency"])
             instr_attrs.extend(
@@ -503,16 +487,6 @@ class InstrTraceBuilder(IBaseTraceBuilder):
                     ("simt_processed_bytes", instr["SIMTLdStProcessedBytes"]),
                 ]
             )
-
-            rvec_ipc_attr = None
-            if instr["VfClass"] == VF_CLASS_SCALAR:
-                rvec_ipc_attr = ("scalar_ipc", ChromeTracingUtils.round_or_none(instr["InVFScalarIPC"], 5))
-            elif instr["VfClass"] == VF_CLASS_EXECUTION:
-                rvec_ipc_attr = ("exec_ipc", ChromeTracingUtils.round_or_none(instr["InVFExecIPC"], 5))
-            elif instr["VfClass"] == VF_CLASS_LOAD_STORE:
-                rvec_ipc_attr = ("load_store_ipc", ChromeTracingUtils.round_or_none(instr["InVFLdStIPC"], 5))
-            if rvec_ipc_attr is not None:
-                instr_attrs.append(rvec_ipc_attr)
 
         # MTE (DMA MOV) instruction attributes
         elif instr_type in [InstrType.MTE1, InstrType.MTE2, InstrType.MTE3, InstrType.PUSHQ]:

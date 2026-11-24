@@ -18,7 +18,6 @@ import sqlite3
 from typing import Iterable, List, Dict, Set, Iterator
 
 from npusim.prof.src.common.biprof_enum import InstrType
-from npusim.prof.src.common.biprof_context import biprof_ctx
 from npusim.prof.src.backend.database import database_handler
 from npusim.prof.src.backend.analyzers.base.analyzer_base import IAnalyzer
 
@@ -27,13 +26,6 @@ from npusim.prof.src.backend.analyzers.base.analyzer_base import IAnalyzer
 class VfRawData:
     vf_instr_id: int
     instrs_of_vf: List[sqlite3.Row]
-
-
-@dataclass(frozen=True)
-class VfIPCItemBase:
-    exec_instr_id: int
-    instr_type: InstrType
-    window_start_tick: int
 
 
 class Ascend950VfIPCAnalyzerBase(IAnalyzer):
@@ -151,17 +143,12 @@ class Ascend950VfIPCAnalyzerBase(IAnalyzer):
         cycles = max(difference, 1)
         return dispatched_instrs_count / cycles
 
-    def process_vfs(self, sliding_window_size: int, vf_raw_data: Iterator[VfRawData]) -> None:
+    def process_vfs(self, vf_raw_data: Iterator[VfRawData]) -> None:
         raise NotImplementedError
 
     def process(self) -> None:
         self.make_index()
 
-        # Process
-        vf_raw_data_iter = self.iter_vf_raw_data()
-        self.process_vfs(
-            biprof_ctx.sliding_window_vec,
-            vf_raw_data_iter,
-        )
+        self.process_vfs(self.iter_vf_raw_data())
 
         self.drop_index()

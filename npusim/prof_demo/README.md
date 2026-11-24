@@ -36,15 +36,13 @@ VF report 文件名取各自输入 DB 的文件名 stem（与原模块一致）�
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `--core-id` | `all` | `all`、`0`、`0-2,5`；与已有 core 取交集，无匹配时报错。原 `cannsim report` 默认只处理 core 0，见下文 |
-| `--sliding-window` | `64` | scalar IPC 窗口指令数，必须为正整数 |
-| `--sliding-window-vec` | `8` | VF IPC 窗口指令数，必须为正整数 |
 | `--json-max-size` | `524288000` | trace 分片目标大小；`-1` 关闭分片 |
 | `--no-ticks-to-ns` | 关闭 | 兼容原行为，将 1 tick 当作 1 ns 展示 |
 | `--vf-report-json` | 关闭 | 额外导出 `<db_stem>_vf_report.json`，对应原 `npusim.prof report --vf-report-json`；无 SIMD/SIMT VF IPC 结果时不生成文件。关闭时其余产物与未加此功能前逐字节一致 |
 
 `--core-id` 默认 `all`，与原上层入口不同：`cannsim report` 调用 `npusim.prof` 时传 `core_id or "0"`（`cannsim/core/report/report_path.py`），即未指定时只处理 core 0。需要与 `cannsim report` 默认结果对齐时显式传 `--core-id 0`。
 
-默认计算 scalar 和 vector IPC，对应原上层 report 调用启用 `--scalar-ipc --vec-ipc` 的行为。原模块只有同时传 `--vec-ipc` 才会计算 VF IPC 并导出 VF JSON；本模块总是计算，所以 `--vf-report-json` 单独生效。无 HTML 开关、smart-pipes、禁用 analyzer 或采集参数。
+默认计算每次 VF 和 VF_SIMT 调用的汇总 IPC，因此 `--vf-report-json` 可以单独生效。总体 scalar IPC 在 VF JSON 中按需计算。旧的 IPC 窗口参数仍可接收，但已无效果。
 
 按 DB/core 顺序执行，无进程池和 `-j`。内存使用与 DB 和单 core 的事件数量相关；分片不是流式生成，不承诺恒定内存。
 
@@ -52,7 +50,7 @@ VF report 文件名取各自输入 DB 的文件名 stem（与原模块一致）�
 
 ## 保留的语义
 
-- 指令时间线、公开指令参数、同步 buffer/flag flow、scalar/VF IPC、unit utilization counter。
+- 指令时间线、公开指令参数、同步 buffer/flag flow、VF 调用汇总 IPC、unit utilization counter。
 - `aicore_utilization.json` 是每个 core/subcore 的活跃**跨度**及其占全局跨度的比例，不是区间并集忙碌率。
 - summary 保留 kernel、流水线利用率、诊断、scalar/vector 指令统计、cache 字段、13 类带宽候选、流水线重叠率和 SIMD VF 指标。无事务的带宽项仍省略。
 - 保留旧 core 选择口径：trace、pipe utilization、scalar IPC 和 unit counters 按选择过滤；occupancy、VF IPC 及其他 kernel 级汇总仍可覆盖全部 core。不是全局过滤器。
@@ -68,7 +66,7 @@ VF report 文件名取各自输入 DB 的文件名 stem（与原模块一致）�
 
 SIMT 叶指令 `SIMT_*` 在 RVEC 类型中的展示缺失是原逻辑的已知问题：本模块继续跳过它们，仅保留 `VF_SIMT` 调用等有效事件，不虚构 warp 分组。本次没有修复这项行为。
 
-对比允许删除 metadata-only 空轨道和重新编号 PID，其余有效事件及指标应一致。不顺便修改原 summary 的指标命名和计算口径。对原来会除零的边界做明确处理：零全局跨度拒绝生成；局部零时长 scalar IPC 分母至少为一个周期；无法计算的 imbalance ratio 为 `null`；无 scalar 指令的比例为 `0`。
+对比允许删除 metadata-only 空轨道、重新编号 PID，并忽略旧 trace 的逐指令 IPC 字段。其余有效事件及指标应一致。零全局跨度拒绝生成，无法计算的 imbalance ratio 为 `null`，无 scalar 指令的比例为 `0`。
 
 ## 测试
 

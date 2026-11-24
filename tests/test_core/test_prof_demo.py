@@ -202,7 +202,7 @@ def make_db(path, name="synthetic", launch=0):
 TRACE_NAME_RE = re.compile(r"^(?:core_(\d+)_tracing_report_\d+|trace_core(\d+))\.json(?:\.gz)?$")
 
 
-def normalized_trace(directory):
+def normalized_trace(directory, *, legacy_dynamic_ipc=False):
     """Compare effective events, ignoring metadata-only tracks and PID numbering."""
     events = []
     for path in sorted(Path(directory).rglob("*.json*")):
@@ -222,6 +222,10 @@ def normalized_trace(directory):
             event["pid"] = names[event["pid"]]
             if "unit" in event.get("args", {}):
                 event["args"]["unit"] = event["pid"]
+            if legacy_dynamic_ipc and event["name"] not in {"VF", "VFI", "VF_SIMT"}:
+                args = event.get("args", {})
+                for key in ("ipc_value", "scalar_ipc", "exec_ipc", "load_store_ipc", "branch_ipc"):
+                    args.pop(key, None)
             events.append(json.dumps([core, event], sort_keys=True))
     return collections.Counter(events)
 
@@ -259,6 +263,9 @@ class ReportsTest(unittest.TestCase):
         self.assertEqual(sum(e["ph"] in ("s", "f") for e in trace), 4)
         args = next(e["args"] for e in trace if e["name"] == "RV_VLD")
         self.assertEqual(args["vector_utilization"], "50%")
+        self.assertNotIn("load_store_ipc", args)
+        self.assertNotIn("ipc_value", next(e["args"] for e in trace if e["name"] == "ADD"))
+        self.assertGreater(next(e["args"]["exec_ipc"] for e in trace if e["name"] == "VF"), 0)
         self.assertNotIn("RAW_NOT_FOR_REPORT", (report / "core_0_tracing_report_0.json").read_text())
         self.assertNotIn("encoding", args)
         occupancy = json.loads((report / "aicore_utilization.json").read_text())
@@ -403,8 +410,7 @@ class ReportsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "No .db files"):
             generate_reports(inputs, self.root / "reports")
 
-    def test_window_one_and_zero_duration_scalar(self):
-        config.sliding_window = config.sliding_window_vec = 1
+    def test_zero_duration_scalar(self):
         with sqlite3.connect(self.db) as connection:
             connection.execute(
                 "UPDATE ExecutedInstructions SET ExecInstrTickEnd=ExecInstrTickStart WHERE ExecInstrName='ADD'"
@@ -553,7 +559,7 @@ class SampleParityTest(unittest.TestCase):
                 self.assertEqual(
                     json.loads((baseline / filename).read_text()), json.loads((report / filename).read_text())
                 )
-            expected = normalized_trace(baseline)
+            expected = normalized_trace(baseline, legacy_dynamic_ipc=True)
             self.assertTrue(
                 expected,
                 f"No trace events found under baseline {baseline}; expected "

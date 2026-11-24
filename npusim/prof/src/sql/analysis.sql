@@ -397,18 +397,7 @@ CREATE TABLE SubQueueTypes(
     FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
 );
 
--- IPCs for Scalar IPC Dynamic Histogram (and clear Scalar instructions) (1)
-CREATE TABLE ScalarIpcDynamic(
-    CoreId INTEGER NOT NULL,
-    CoreTypeId INTEGER NOT NULL,
-    ExecInstrId INTEGER NOT NULL PRIMARY KEY,
-    Tick INTEGER NOT NULL,
-    IPC REAL NOT NULL,
-    FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId),
-    FOREIGN KEY (CoreTypeId) REFERENCES CoreTypes (CoreTypeId)
-);
-
--- IPCs of VF instructions (2.1)
+-- Aggregate IPC per VF and VF_SIMT invocation.
 CREATE TABLE VfIPC(
     ExecInstrId INTEGER NOT NULL,  -- of VF instruction
     ScalarIPC REAL NOT NULL,
@@ -417,16 +406,6 @@ CREATE TABLE VfIPC(
     FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
 );
 
--- IPCs of instructions "inside" VFs (2.2)
-CREATE TABLE VfIPCInside(
-    ExecInstrId INTEGER NOT NULL PRIMARY KEY,  -- of some instruction "in" VF
-    ScalarIPC REAL NOT NULL,
-    ExecIPC REAL NOT NULL,
-    LdStIPC REAL NOT NULL,
-    FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
-);
-
--- IPCs of VF_SIMT instructions (3.1)
 CREATE TABLE VfSimtIPC(
     ExecInstrId INTEGER NOT NULL,  -- of VF_SIMT instruction
     ExecIPC REAL NOT NULL,
@@ -435,75 +414,13 @@ CREATE TABLE VfSimtIPC(
     FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
 );
 
--- IPCs of instructions "inside" VF_SIMTs (3.2)
-CREATE TABLE VfSimtIPCInside(
-    ExecInstrId INTEGER NOT NULL PRIMARY KEY,  -- of some instruction "in" VF_SIMT
-    ExecIPC REAL NOT NULL,
-    LdStIPC REAL NOT NULL,
-    BranchIPC REAL NOT NULL,
-    FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
-);
-
--- (1) UNION (2.1) UNION (2.2) UNION (3.1) UNION (3.2)
+-- IPC metrics on VF and VF_SIMT invocation instructions.
 CREATE VIEW IPCAsmMetrics AS
-SELECT ExecInstrId, IPC AS ScalarIPC, 0.0 AS ExecIPC, 0.0 AS LdStIPC, 0.0 AS BranchIPC
-FROM ScalarIpcDynamic
-UNION ALL
 SELECT ExecInstrId, ScalarIPC, ExecIPC, LdStIPC, 0.0 AS BranchIPC
 FROM VfIPC
 UNION ALL
-SELECT ExecInstrId, ScalarIPC, ExecIPC, LdStIPC, 0.0 AS BranchIPC
-FROM VfIPCInside
-UNION ALL
 SELECT ExecInstrId, 0.0, ExecIPC, LdStIPC, BranchIPC
-FROM VfSimtIPC
-UNION ALL
-SELECT ExecInstrId, 0.0, ExecIPC, LdStIPC, BranchIPC
-FROM VfSimtIPCInside;
-
--- IPCs for VF IPC Dynamic Histograms
-CREATE TABLE VfIPCDynamic(
-    ExecInstrId INTEGER NOT NULL UNIQUE,  -- of some instruction "in" VF
-    WindowStartTick INTEGER NOT NULL,
-    ScalarIPC REAL NOT NULL,
-    ExecIPC REAL NOT NULL,
-    LdStIPC REAL NOT NULL,
-    FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
-);
-CREATE VIEW VfIPCDynamicView AS
-SELECT
-    ExecutedInstructions.ExecInstrCoreId AS CoreId,
-    ExecutedInstructions.CoreTypeId AS CoreTypeId,
-    VfIPCDynamic.WindowStartTick AS WindowStartTick,
-    VfIPCDynamic.ScalarIPC AS ScalarIPC,
-    VfIPCDynamic.ExecIPC AS ExecIPC,
-    VfIPCDynamic.LdStIPC AS LdStIPC
-FROM VfIPCDynamic
-LEFT JOIN ExecutedInstructions
-ON VfIPCDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
-ORDER BY VfIPCDynamic.rowid;
-
--- IPCs for VF_SIMT IPC Dynamic Histograms
-CREATE TABLE VfSimtIPCDynamic(
-    ExecInstrId INTEGER NOT NULL UNIQUE,  -- of some instruction "in" VF_SIMT
-    WindowStartTick INTEGER NOT NULL,
-    ExecIPC REAL NOT NULL,
-    LdStIPC REAL NOT NULL,
-    BranchIPC REAL NOT NULL,
-    FOREIGN KEY (ExecInstrId) REFERENCES ExecutedInstructions (ExecInstrId)
-);
-CREATE VIEW VfSimtIPCDynamicView AS
-SELECT
-    ExecutedInstructions.ExecInstrCoreId AS CoreId,
-    ExecutedInstructions.CoreTypeId AS CoreTypeId,
-    VfSimtIPCDynamic.WindowStartTick AS WindowStartTick,
-    VfSimtIPCDynamic.ExecIPC AS ExecIPC,
-    VfSimtIPCDynamic.LdStIPC AS LdStIPC,
-    VfSimtIPCDynamic.BranchIPC AS BranchIPC
-FROM VfSimtIPCDynamic
-LEFT JOIN ExecutedInstructions
-ON VfSimtIPCDynamic.ExecInstrId=ExecutedInstructions.ExecInstrId
-ORDER BY VfSimtIPCDynamic.rowid;
+FROM VfSimtIPC;
 
 CREATE TABLE IssueQueueUtilization(
     Tick INTEGER NOT NULL,

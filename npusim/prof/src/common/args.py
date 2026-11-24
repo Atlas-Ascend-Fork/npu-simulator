@@ -176,13 +176,13 @@ class BiProfArgParser:
             "--scalar-ipc",
             action=ArgumentAction.STORE_TRUE,
             default=False,
-            help="Enable scalar IPC dynamic analysis",
+            help="Compatibility flag. Overall scalar IPC is part of the base report",
         )
         extra_args.add_argument(
             "--vec-ipc",
             action=ArgumentAction.STORE_TRUE,
             default=False,
-            help="Enable vector IPC dynamic analysis",
+            help="Enable aggregate IPC per vector-function invocation",
         )
         extra_args.add_argument(
             "--simd-perf",
@@ -239,21 +239,18 @@ class BiProfArgParser:
             help="Enable bubble analysis",
         )
 
-        # -- Scalar/Vector IPC dynamic analysis --
-        ipc_dynamic = report_mode.add_argument_group("Scalar/Vector IPC dynamic analysis")
-        ipc_dynamic.add_argument(
+        # Accept legacy window options for callers that still pass them.
+        report_mode.add_argument(
             "--sliding-window",
             action=ArgumentAction.STORE,
-            default=64,
             type=int,
-            help=("Scalar IPC sliding window size in instructions (default: 64)"),
+            help=argparse.SUPPRESS,
         )
-        ipc_dynamic.add_argument(
+        report_mode.add_argument(
             "--sliding-window-vec",
             action=ArgumentAction.STORE,
-            default=8,
             type=int,
-            help=("Vector IPC sliding window size in instructions (default: 8)"),
+            help=argparse.SUPPRESS,
         )
 
         # -- Output options --

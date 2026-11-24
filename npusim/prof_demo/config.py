@@ -21,8 +21,6 @@ from dataclasses import dataclass
 class ReportConfig:
     core_id: str = "all"
     no_ticks_to_ns: bool = False
-    sliding_window: int = 64
-    sliding_window_vec: int = 8
     json_max_size: int = 524288000
     vf_report_json: bool = False
 

@@ -26,22 +26,6 @@ def decompose_instr_id(composite_id):
     return composite_id & ((1 << 32) - 1)
 
 
-def edge_instructions(instructions, window_size):
-    """Leading/trailing instructions not covered by any sliding-window midpoint.
-
-    Shared by scalar and VF dynamic IPC; callers let them inherit the first/last
-    window value (imputation for visualization continuity).
-    """
-    start_instructions, end_instructions = [], []
-    if len(instructions) >= 2:
-        start_instructions = instructions[: int(window_size / 2)]
-    if len(instructions) > 2:
-        is_even = window_size % 2 == 0
-        tail = int(window_size / 2) - is_even
-        end_instructions = instructions[-tail:] if tail > 0 else []
-    return start_instructions, end_instructions
-
-
 def get_tick_to_us_coeff():
     from npusim.prof_demo.database import database_handler
 

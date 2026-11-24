@@ -32,7 +32,6 @@ from npusim.prof_demo.analysis.dma import DmaAnalyzer
 from npusim.prof_demo.analysis.dependencies import PipeDependencyAnalyzer
 from npusim.prof_demo.analysis.vf import Ascend950VFIPCAnalyzer
 from npusim.prof_demo.analysis.simt import Ascend950VFSimtIPCAnalyzer
-from npusim.prof_demo.analysis.scalar import Ascend950ScalarInstructionPerCycleDynamicAnalyzer
 from npusim.prof_demo.analysis.unit import UnitUtilizationAnalyzer
 from npusim.prof_demo.reports import tracing
 from npusim.prof_demo.reports.occupancy import DatabaseManager as OccupancyManager
@@ -46,7 +45,6 @@ ANALYZERS = (
     PipeDependencyAnalyzer,
     Ascend950VFIPCAnalyzer,
     Ascend950VFSimtIPCAnalyzer,
-    Ascend950ScalarInstructionPerCycleDynamicAnalyzer,
     UnitUtilizationAnalyzer,
 )
 
@@ -138,8 +136,8 @@ def main(argv=None):
     parser.add_argument(
         "--json-max-size", type=json_limit, default=524288000, help="trace shard payload target; -1 disables splitting"
     )
-    parser.add_argument("--sliding-window", type=positive_int, default=64, help="scalar IPC instruction window")
-    parser.add_argument("--sliding-window-vec", type=positive_int, default=8, help="vector IPC instruction window")
+    parser.add_argument("--sliding-window", type=positive_int, help=argparse.SUPPRESS)
+    parser.add_argument("--sliding-window-vec", type=positive_int, help=argparse.SUPPRESS)
     parser.add_argument("--vf-report-json", action="store_true", help="also export <db_stem>_vf_report.json")
     args = parser.parse_args(argv)
     for field in dataclasses.fields(config):
