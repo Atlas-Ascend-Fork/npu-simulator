@@ -81,6 +81,12 @@ class ArchDiagramAnalyzer(IAnalyzer):
 
     @staticmethod
     def calc_throughput_stats(instrs: List[Any], pb_key: str = "ProcessedBytes") -> Tuple[int, int, float]:
+        # The busy time below is the union of the instruction windows, and the
+        # classic interval-union sweep only yields the union when the intervals
+        # are ordered by start. The feeding queries order by TickEnd, so order
+        # them here instead of relying on the caller.
+        instrs = sorted(instrs, key=lambda instr: instr["TickStart"])
+
         tput_sum = 0
         cnt = 0
         total_exec_time = 0
@@ -239,6 +245,9 @@ class ArchDiagramAnalyzer(IAnalyzer):
         total_exec_time = 0
         cur_time_lb = 0
         cur_time_rb = 0
+        # Same interval-union sweep as calc_throughput_stats(): order the
+        # windows by start, the query above orders them by end.
+        rows = sorted(rows, key=lambda row: row[3])
         for row in rows:
             instr_processed_bytes = row[0]
             instr_ub_mask = row[1]
