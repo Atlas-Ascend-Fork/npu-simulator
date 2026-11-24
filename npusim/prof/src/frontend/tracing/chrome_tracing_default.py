@@ -568,7 +568,7 @@ class DatabaseManager:
                 DmaMovMultiParams.D AS DmaMovMultiD,
 
                 DmaMovLoad2dParams.MStartPosition AS DmaMovLoad2dMStartPos,
-                DmaMovLoad2dParams.MStartPosition AS DmaMovLoad2dKStartPos,
+                DmaMovLoad2dParams.KStartPosition AS DmaMovLoad2dKStartPos,
                 DmaMovLoad2dParams.MStep AS DmaMovLoad2dMStep,
                 DmaMovLoad2dParams.KStep AS DmaMovLoad2dKStep,
 

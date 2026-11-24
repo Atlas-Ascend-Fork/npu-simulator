@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the BiProf hotspot reporter's per-DB handling."""
+"""Tests for BiProf report generation and per-DB handling."""
 
 import sqlite3
 import tempfile
@@ -27,7 +27,68 @@ from npusim.core.public.aicore_objects import DeviceObject
 from npusim.prof.src.backend import reporters
 from npusim.prof.src.common.biprof_context import biprof_ctx
 
+import pytest
+
+from npusim.prof.src.backend.analyzers.david.dma_mov_load_2d_analyzer import Ascend950DMAMovLoad2DAnalyzer
+from npusim.prof.src.backend.database import database_handler
 from npusim.prof.src.backend.reporters import HotspotsDbOnlyReporter
+from npusim.prof.src.common.biprof_enum import SubQueueType
+from npusim.prof.src.frontend.tracing.chrome_tracing_critical_path import CriticalPathTraceBuilder
+from npusim.prof.src.frontend.tracing.chrome_tracing_default import InstrTraceBuilder
+from npusim.prof.src.frontend.tracing.chrome_tracing_smart_pipe import SmartPipeTraceBuilder
+
+
+@pytest.fixture
+def load2d_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(biprof_ctx, "arch", "v100")
+    monkeypatch.setattr(biprof_ctx, "object_file", None)
+    database_handler.connect(str(tmp_path / "trace.db"))
+    try:
+        database_handler.execute_script("""
+            CREATE TABLE ExecutedInstructions(
+                ExecInstrId INTEGER PRIMARY KEY, SourceInstrAddr INTEGER,
+                ExecInstrTickStart INTEGER, ExecInstrTickEnd INTEGER,
+                ExecInstrName TEXT, ExecInstrParams TEXT, InstrTypeId INTEGER,
+                ExecInstrCoreId INTEGER, CoreTypeId INTEGER, ExtendParams TEXT
+            );
+            CREATE TABLE UbBankConflictsCross(
+                ExecInstrId INTEGER, ConflictCount INTEGER, ConflictInstrs TEXT
+            );
+            CREATE TABLE DispatchTime(ExecInstrId INTEGER, DispatchTimeTick INTEGER);
+        """)
+        sql_dir = Path(__file__).resolve().parents[2] / "npusim" / "prof" / "src" / "sql"
+        for filename in ("bridge.sql", "analysis.sql"):
+            database_handler.execute_script((sql_dir / filename).read_text(encoding="utf-8"))
+        yield database_handler
+    finally:
+        database_handler.disconnect()
+
+
+@pytest.mark.parametrize("builder_cls", [InstrTraceBuilder, SmartPipeTraceBuilder, CriticalPathTraceBuilder])
+@pytest.mark.parametrize("instr_name", ["LOAD_2Dv2", "LOAD_MX_2Dv2"])
+@pytest.mark.parametrize("starts", [(4096, 8192), (0, 128), (128, 0)])
+def test_load2d_trace_preserves_independent_start_positions(load2d_database, builder_cls, instr_name, starts):
+    import json
+
+    m_start, k_start = starts
+    params = json.dumps({"src_mem": "L1", "m_start_pos": m_start, "k_start_pos": k_start, "m_step": 2, "k_step": 3})
+    load2d_database.execute(
+        "INSERT INTO ExecutedInstructions VALUES (1,4,10,20,?,?,?,?,?,?)", (instr_name, "", 3, 0, 1, params)
+    )
+    load2d_database.execute("INSERT INTO SubQueueTypes VALUES (?,?)", (1, SubQueueType.EXEC.value))
+    instr = load2d_database.execute("SELECT * FROM ExecutedInstructions").fetchone()
+    analyzer = Ascend950DMAMovLoad2DAnalyzer()
+    info = analyzer.process_instruction(instr)
+    assert info is not None
+    analyzer.save_dma_params_info(1, info.params_info)
+
+    events = [event for event in builder_cls().get_json_obj(0) if event.get("name") == instr_name]
+
+    assert len(events) == 1
+    assert events[0]["args"]["m_start_pos_bytes"] == m_start
+    assert events[0]["args"]["k_start_pos_bytes"] == k_start
+    assert events[0]["args"]["m_step_bytes"] == 2
+    assert events[0]["args"]["k_step_bytes"] == 3
 
 
 class EmptyKernelDbTests(unittest.TestCase):
