@@ -206,7 +206,7 @@ class BiProfArgParser:
             "--roofline",
             action=ArgumentAction.STORE_TRUE,
             default=False,
-            help="Persist roofline analysis and export JSON (requires function ranges from --object-file or static DB)",
+            help="Persist Roofline analysis tables (requires function ranges from a device object)",
         )
         extra_args.add_argument(
             "--smart-pipes",

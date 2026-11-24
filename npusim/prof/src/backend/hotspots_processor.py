@@ -13,10 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging as log
 import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 
+from npusim.core.public.comm import print_warn
 from npusim.prof.src.common.biprof_context import biprof_ctx
+from npusim.prof.src.common.logger import final_logger
 from npusim.prof.src.frontend.tracing.chrome_tracing_default import ChromeTracingBuilder
 from npusim.prof.src.frontend.tracing.chrome_tracing_smart_pipe import (
     SmartPipeTracingBuilder,
@@ -31,7 +36,6 @@ from npusim.prof.src.arch_diagram.reporter import ArchDiagramReporter
 from npusim.prof.src.arch_diagram.constants import ARCH_DIAG_SUPPORTED_ARCH
 from npusim.prof.src.frontend.summary_reporter import SummaryReporter
 from npusim.prof.src.frontend.bubble_report import BubbleReporter
-from npusim.prof.src.frontend.roofline_reporter import RooflineReporter
 
 
 class HotspotsProcessor:
@@ -67,9 +71,24 @@ class HotspotsProcessor:
             res += smart_pipe_builder.generate(self.report_dir_path)
         res += occupancy_builder.generate(self.report_dir_path)
         if biprof_ctx.critical_path:
-            cpath_builder = CriticalPathBuilder()
-            res += cpath_builder.generate(self.report_dir_path)
+            self._generate_critical_path_trace()
         return res
+
+    def _generate_critical_path_trace(self) -> None:
+        try:
+            # Publish only after all cores finish. An incomplete gzip file can
+            # otherwise make the packer fail while collecting report JSON.
+            with TemporaryDirectory(dir=self.workspace) as staging:
+                status = CriticalPathBuilder.generate(staging)
+                if status != 0:
+                    print_warn(f"Critical Path trace skipped for kernel {self.kernel_name!r}: return code {status}")
+                    return
+                for path in Path(staging).iterdir():
+                    path.replace(Path(self.report_dir_path) / path.name)
+            final_logger.add_general_info(f"Critical path reports: {self.report_dir_path}")
+        except Exception as error:
+            print_warn(f"Critical Path trace skipped for kernel {self.kernel_name!r}: {error}")
+            log.debug("Critical Path trace generation failed", exc_info=True)
 
     def generate_arch_diagram(self) -> int:
         if self.arch in ARCH_DIAG_SUPPORTED_ARCH:
@@ -85,6 +104,3 @@ class HotspotsProcessor:
     def generate_summary_report(self) -> int:
         summary_reporter = SummaryReporter()
         return summary_reporter.prepare_report(self.report_dir_path)
-
-    def generate_roofline_report(self) -> int:
-        return RooflineReporter().prepare_report(self.report_dir_path)

@@ -139,7 +139,7 @@ class RooflineAnalyzer(IAnalyzer):
         ]
         if not functions:
             raise ValueError(
-                "Roofline needs function ranges; supply the device ELF through --object-file in BIPROF_OPTS"
+                "Roofline needs function ranges. Provide a matching device ELF with npusim report --object-file."
             )
         text = {
             r["SourceInstrAddr"]: r["SourceInstrText"] or ""

@@ -291,8 +291,8 @@ The archive contains exported rows, not the raw SQLite file or a complete
 filesystem snapshot. Full documents are embedded in the `SourceFileText` column
 of `SourceFiles.csv`. Only paths listed in `SourceFiles` are considered; the
 producer does not scan the project or discover additional includes.
-Source/Assembly HTML is absent by design in this branch. The retained
-`roofline.json` and Roofline CSV tables describe a separate analysis contract.
+Source/Assembly HTML is absent by design in this branch. The
+[Roofline CSV tables](roofline_data_format.md) describe a separate analysis contract.
 
 ## Full source documents: `SourceFiles.SourceFileText`
 

@@ -9,7 +9,7 @@ picture.
 
 Produced by `Ascend950MemoryHeatmapAnalyzer`
 (`npusim/prof/src/backend/analyzers/david/memory_heatmap_analyzer.py`), which
-runs when `--memory-utilization` is passed.
+runs when the `memory-utilization` feature is enabled.
 
 Nothing here is stored that a consumer can work out for itself: the address of
 a cell, the span of a view, how many cells it has, the busiest of them. They

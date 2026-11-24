@@ -22,7 +22,7 @@ files. No collection category supplies missing debug information.
 | `simd-perf` | `instr,pmu` | `VfPMUValues`, `VfPMUMetrics`, `VfPMUSummary` and their aggregation views | `VfPMUAnalyzer`; VF/subcore top-down metrics |
 | `simd-sampling` | `instr,simd` | `SIMDSamplingStats`, `SIMDStallReasonTypes`, instruction IDs; object/DWARF for source labels | SIMD sampling stall statistics / timeline |
 | `memory-utilization` | `instr,mem` | Local `MemoryRWAccesses`, joined to instructions | Memory utilization states and memory heatmap layout/cells |
-| `roofline` | `instr,ub` | Instruction-derived compute/DMA/SIMT facts; `UbRwStatistics` for UB traffic; object function boundaries | `Roofline*` tables and `roofline.json` |
+| `roofline` | `instr,ub` | Instruction-derived compute/DMA/SIMT facts; `UbRwStatistics` for UB traffic; object function boundaries | `Roofline*` tables and their CSV exports |
 | `smart-pipes` | `instr,ccu` | Instruction types/synchronization and `DispatchTime` | Split compute/sync queues, queue utilization and dispatch presentation |
 | `critical-path` | `instr,ccu` | Instructions + derived `PipeDependency`; `DispatchTime` for synchronization wait durations | `CriticalPath` and its trace |
 | `bubble` | `instr,icache` | Instruction timing/parameters and cache-miss events from `ICacheEvents` | `TraceBubbles`, `TraceBubbleSummary` and bubble trace; ICache events support cache-miss classification |
@@ -89,8 +89,8 @@ disabled pending helper-contract adaptation. SIMT address reads are not a
 live-register/occupancy analysis.
 
 `critical-path` is not enabled by default while its implementation is pending.
-`vf-report-json` is also explicit opt-in. Use `--feature-list` or `BIPROF_OPTS`
-to request them; `record -g vf` remains an explicit VF JSON export request.
+`vf-report-json` is also explicit opt-in. Select either feature with
+`--feature-list`. `record -g vf` also requests VF JSON.
 Ordinary `record -g` and `report` do not export VF JSON by default.
 
 ## Defaults and selection
@@ -139,8 +139,6 @@ Priority:
    defaults, including `BIPROF_OPTS=''`. Collection follows its feature flags.
 4. Otherwise, use the default feature list and its collection union.
 
-For example, `BIPROF_OPTS='--roofline'` still selects only Roofline plus base
-analysis, and automatically collects `instr,ub,ccu,simt,spr` unless collection is overridden.
 Changing features at **report** time cannot collect missing data from an old
 recording. A selected analysis can legitimately lack events for a particular
 kernel: pure SIMT kernels need not produce SIMD PMU, SIMD sampling or local

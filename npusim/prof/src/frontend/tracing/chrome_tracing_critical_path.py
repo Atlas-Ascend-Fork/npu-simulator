@@ -24,7 +24,6 @@ from npusim.prof.src.common.stage_reporter import StageReporter
 from npusim.prof.src.common.biprof_context import biprof_ctx
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from npusim.prof.src.backend.database import database_handler
-from npusim.prof.src.common.logger import final_logger
 
 
 class DatabaseManagerExtra:
@@ -76,5 +75,4 @@ class CriticalPathBuilder(ChromeTracingBuilder):
                     result = future.result()
                     if result != 0:
                         return 1
-        final_logger.add_general_info(f"Critical path reports: {output_dir}")
         return 0

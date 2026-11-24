@@ -22,7 +22,7 @@ from pathlib import Path
 from npusim.core.public.aicore_objects import DeviceObjectResolver
 
 import npusim.prof.src.common.utils as utils
-from npusim.core.public.comm import print_error, print_info
+from npusim.core.public.comm import print_error, print_info, print_warn
 from npusim.prof.src.common.stage_reporter import StageReporter
 from npusim.prof.src.common.biprof_context import biprof_ctx
 from npusim.prof.src.backend.base.data_processors_base import IBaseReporter
@@ -163,14 +163,23 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
             biprof_ctx.kernel_name = device_kernel
             database_handler.execute("DELETE FROM KernelInfo WHERE KernelInfoAttr='object_entry_pc'")
             if object_file:
-                database_handler.execute(
-                    "INSERT INTO KernelInfo (KernelInfoAttr, KernelInfoVal) VALUES ('object_entry_pc', ?)",
-                    (selected.entry_pc,),
-                )
-                obj_proc = ObjectProcessor(self._arch, self._output_dir, object_file)
-                obj_data, functions = obj_proc.read_for_launch(selected, executed_pcs=sorted({row[0] for row in trace}))
-                with StageReporter("Save processed object info"):
-                    BackendDBManager.save_processed_data(obj_data, functions)
+                try:
+                    obj_proc = ObjectProcessor(self._arch, self._output_dir, object_file)
+                    obj_data, functions = obj_proc.read_for_launch(
+                        selected, executed_pcs=sorted({row[0] for row in trace})
+                    )
+                except Exception as error:
+                    print_warn(f"Cannot read AI Core object {object_file} for kernel {kernel_name!r}: {error}")
+                    log.debug("AI Core object read failed", exc_info=True)
+                    object_file = biprof_ctx.object_file = None
+                    biprof_ctx.kernel_name = kernel_name
+                else:
+                    database_handler.execute(
+                        "INSERT INTO KernelInfo (KernelInfoAttr, KernelInfoVal) VALUES ('object_entry_pc', ?)",
+                        (selected.entry_pc,),
+                    )
+                    with StageReporter("Save processed object info"):
+                        BackendDBManager.save_processed_data(obj_data, functions)
 
             processor = HotspotsProcessor(
                 arch=self._arch,
@@ -211,8 +220,6 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
             ret += processor.generate_arch_diagram()
 
             ret += processor.generate_summary_report()
-            if biprof_ctx.roofline:
-                ret += processor.generate_roofline_report()
         finally:
             for key in ("object_file", "kernel_name"):
                 biprof_ctx.__dict__.pop(key, None)

@@ -6,8 +6,7 @@ is `v100`.
 
 The authoritative definitions are [analysis.sql](../src/sql/analysis.sql).
 [RooflineAnalyzer](../src/backend/analyzers/roofline_analyzer.py) computes and writes
-the data. [RooflineReporter](../src/frontend/roofline_reporter.py) reads it to produce
-a JSON export. This branch does not generate Source/Assembly or Roofline HTML.
+the data. The `.npu-rep` archive includes non-empty Roofline tables as CSV.
 
 For source/assembly views, correlation keys, metrics and archive consumption, see
 [Source/Assembly UI data contract](source_assembly_data_format.md).
@@ -38,7 +37,7 @@ Before consuming a snapshot, check the latest `AnalysisState` entry with
 `AnalysisName = 'roofline'`. `AnalysisPassed = 1` indicates success; a failed entry
 must not be rendered using rows left from an earlier snapshot. Table existence
 alone does not prove that the analyzer ran. A successful analysis can also have
-zero points; rerun analysis with DEBUG logging in that case.
+zero points.
 
 ## Table overview
 
@@ -231,20 +230,10 @@ For the observed falite Softmax SIMD point, `TotalOperations = 82944`,
 `ProcessedBytes = 132096`, and `DurationTicks = 1825` give approximately
 `0.62791 OP/byte`, `111.23 GiB/s`, and `69.84` in the stored performance units.
 
-## Debug-export naming
-
-`roofline.json` is the data export. The
-database fields remain the data contract. The reporter maps memory-level names
-using the table above and builds point names as `<FunctionName> - <label>`.
-It exports `FunctionPC` as `pc`, `DurationTicks` as `duration_sum`,
-`TotalOperations` as `proc_elem_sum`, `ProcessedBytes` as `proc_bytes_sum`, and
-`PerformanceGFlops` as `performance`. JSON names and display labels do not rename
-the persisted columns or change their units.
-
 ## Diagnostics and incomplete facts
 
-Diagnostic counts are emitted by the analyzer at DEBUG log level, not stored in
-tables or exported by the reporter. Missing operation or byte facts are skipped
+The analyzer emits diagnostic counts at DEBUG log level.
+Missing operation or byte facts are skipped
 independently, so points may represent partial sums. Points without positive
 work, bytes or duration are omitted. Ambiguous VF attribution invalidates the
 affected function/mode. Enable DEBUG logging when investigating missing points.

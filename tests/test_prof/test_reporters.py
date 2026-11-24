@@ -108,22 +108,33 @@ class EmptyKernelDbTests(unittest.TestCase):
 
 
 class PerKernelObjectTests(unittest.TestCase):
-    def test_context_restored_when_object_processor_fails(self):
+    def test_base_report_continues_and_context_is_restored_when_object_processor_fails(self):
         old = dict(biprof_ctx.__dict__)
         self.addCleanup(lambda: (biprof_ctx.__dict__.clear(), biprof_ctx.__dict__.update(old)))
         biprof_ctx.object_file = "explicit.o"
         biprof_ctx.kernel_name = "original"
+        biprof_ctx.vf_report_json = False
+        biprof_ctx.bubble = False
         reporter = HotspotsDbOnlyReporter()
+        reporter._output_dir = "."
         reporter._object_resolver = MagicMock()
         reporter._object_resolver.select.return_value = DeviceObject("device.o", "raw_symbol")
         with patch.object(reporters, "database_handler") as db, patch.object(
             reporters, "BackendDBManager"
         ), patch.object(reporter, "_get_kernel_name", return_value="alpha"), patch.object(
             reporter, "_get_launch_id", return_value=0
-        ), patch.object(reporters, "ObjectProcessor", side_effect=ValueError("bad object")):
+        ), patch.object(reporters, "ObjectProcessor", side_effect=ValueError("bad object")), patch.object(
+            reporters, "print_warn"
+        ) as warn, patch.object(reporters, "HotspotsProcessor") as processor, patch.object(
+            reporters, "AnalyzerManager"
+        ), patch.object(reporters, "HintManager"):
             db.count_rows.return_value = 1
-            with self.assertRaisesRegex(ValueError, "bad object"):
-                reporter._process_one_db("alpha.db", 0)
+            for name in ("generate_chrome_tracing", "generate_arch_diagram", "generate_summary_report"):
+                getattr(processor.return_value, name).return_value = 0
+            self.assertEqual(reporter._process_one_db("alpha.db", 0), 0)
+            self.assertIsNone(processor.call_args.kwargs["object_path"])
+            processor.return_value.generate_chrome_tracing.assert_called_once()
+            self.assertIn("bad object", warn.call_args.args[0])
             db.disconnect.assert_called_once()
         self.assertEqual(biprof_ctx.object_file, "explicit.o")
         self.assertEqual(biprof_ctx.kernel_name, "original")
