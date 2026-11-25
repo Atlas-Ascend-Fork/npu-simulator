@@ -47,8 +47,8 @@ welcome = """
 ██║ ╚████║██║     ╚██████╔╝    ███████║██║██║ ╚═╝ ██║    
 ╚═╝  ╚═══╝╚═╝      ╚═════╝     ╚══════╝╚═╝╚═╝     ╚═╝    
                                                         
-    Join the conversation and help shape the future.
-    └─ https://gitcode.com/org/cann/discussions/50
+    Star & fork us on GitCode.
+    └─ https://gitcode.com/cann/npu-simulator
 
 Notice: The cannsim command has been renamed to npusim and will be deprecated soon.
 Please use npusim instead.
