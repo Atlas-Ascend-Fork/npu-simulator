@@ -24,6 +24,9 @@ from npusim.prof.src.backend.analyzers.region_tracing_analyzer import (
     RegionTracingAnalyzer,
 )
 from npusim.prof.src.backend.analyzers.roofline_analyzer import RooflineAnalyzer
+from npusim.prof.src.backend.analyzers.speed_of_light_analyzer import (
+    SpeedOfLightAnalyzer,
+)
 from npusim.prof.src.backend.analyzers.vector_utilization_analyzer import (
     VectorUtilizationAnalyzer,
 )
@@ -138,6 +141,46 @@ from npusim.prof.src.common.biprof_enum import ArchName
 
 
 class AnalyzerManager(AnalyzerManagerBase):
+    def __init__(self) -> None:
+        super().__init__()
+        arch = database_handler.get_arch()
+        if arch == ArchName.V100:
+            self.supported_analyses = list(
+                self.david_analyses(),
+            )
+            if biprof_ctx.smart_pipes:
+                self.supported_analyses = [
+                    *self.david_smart_pipes_analyzers(),
+                    *self.supported_analyses,
+                ]
+            if biprof_ctx.memory_utilization:
+                self.supported_analyses = [
+                    *self.supported_analyses,
+                    *self.david_memory_utilization_analyzers(),
+                ]
+            if biprof_ctx.critical_path:
+                self.supported_analyses = [
+                    *self.supported_analyses,
+                    *self.david_critical_path_analyzer(),
+                ]
+            if biprof_ctx.call_stack:
+                self.supported_analyses = [
+                    *self.supported_analyses,
+                    *self.david_call_stack_analyzer(),
+                ]
+            if biprof_ctx.matrix_copy:
+                self.supported_analyses = [
+                    *self.supported_analyses,
+                    *self.david_matrix_copy_analyzers(),
+                ]
+            if biprof_ctx.sol:
+                self.supported_analyses = [
+                    *self.supported_analyses,
+                    *self.david_speed_of_light_analyzer(),
+                ]
+        else:
+            log.error("Unsupported simulator format.")
+
     # Static methods instead of simple class-level sequences
     # allow to use conditional elements
     @staticmethod
@@ -206,37 +249,6 @@ class AnalyzerManager(AnalyzerManagerBase):
     def david_matrix_copy_analyzers() -> Sequence[Type[IAnalyzer]]:
         return (Ascend950VFMemoryAccessAnalyzer,)
 
-    def __init__(self) -> None:
-        super().__init__()
-        arch = database_handler.get_arch()
-        if arch == ArchName.V100:
-            self.supported_analyses = list(
-                self.david_analyses(),
-            )
-            if biprof_ctx.smart_pipes:
-                self.supported_analyses = [
-                    *self.david_smart_pipes_analyzers(),
-                    *self.supported_analyses,
-                ]
-            if biprof_ctx.memory_utilization:
-                self.supported_analyses = [
-                    *self.supported_analyses,
-                    *self.david_memory_utilization_analyzers(),
-                ]
-            if biprof_ctx.critical_path:
-                self.supported_analyses = [
-                    *self.supported_analyses,
-                    *self.david_critical_path_analyzer(),
-                ]
-            if biprof_ctx.call_stack:
-                self.supported_analyses = [
-                    *self.supported_analyses,
-                    *self.david_call_stack_analyzer(),
-                ]
-            if biprof_ctx.matrix_copy:
-                self.supported_analyses = [
-                    *self.supported_analyses,
-                    *self.david_matrix_copy_analyzers(),
-                ]
-        else:
-            log.error("Unsupported simulator format.")
+    @staticmethod
+    def david_speed_of_light_analyzer() -> Sequence[Type[IAnalyzer]]:
+        return (SpeedOfLightAnalyzer,)

@@ -157,10 +157,10 @@ def _check_contract_version(input_db_path: Path) -> bool:
         except sqlite3.Error as exc:
             print_error(f"Cannot read contract_version from {db.name}: {exc}")
             return False
-        if row is None or str(row[0]) != "7":
+        if row is None or str(row[0]) not in ("7", "8"):
             actual = "missing" if row is None else str(row[0])
             print_error(
-                f"Data contract mismatch on {db.name}: expected 7, got {actual}.\n"
+                f"Data contract mismatch on {db.name}: expected 7 or 8, got {actual}.\n"
                 f"  Re-run `cannsim record` with cannsim_helper {version.VERSION}."
             )
             return False

@@ -16,7 +16,7 @@ npusim --help
 `record` 和 `report` 支持 `--feature-list`，用逗号分隔可选分析名称。默认值为：
 
 ```text
-scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,bubble
+scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,sol,bubble
 ```
 
 录制时根据功能依赖自动设置 `CANNSIM_COLLECT`；以上默认功能需要
@@ -44,7 +44,7 @@ npusim report -e /path/to/recording -n 0 --feature-list roofline
 录制时仍需 `-g` 才会自动生成报告，`-g vf` 保留为显式 VF JSON 导出请求。
 
 基础分析采集 `instr,ccu,simt,spr`，支持原有的 SIMT GM 地址指标和 SPR 指令属性。
-默认分析包含 `vec-ipc`、`memory-utilization`、`roofline`、`simd-perf` 和 `bubble`。
+默认分析包含 `vec-ipc`、`memory-utilization`、`roofline`、`sol`、`simd-perf` 和 `bubble`。
 `bubble` 的 cache-miss 分类需要 `icache` 采集。`smart-pipes`、`critical-path`
 和 `vf-report-json` 均不默认启用；VF JSON 需通过 `-g vf` 或功能列表显式请求。
 基础 `ccu` 数据仍用于队列利用率、dispatch 和同步等待信息。

@@ -76,6 +76,14 @@ class RecordRuntimeTests(unittest.TestCase):
             env = record_build_env(base, camodel, record_dir, "Ascend950", (0, 2), False)
             self.assertEqual(env["CORE_ENABLE_MASK"], "0x5")
 
+    def test_record_env_collects_ddr_when_sol_is_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base, camodel, record_dir = self._fake_helper_paths(tmp)
+            for features, expect_ddr in ((None, True), ("sol", True), ("roofline", False)):
+                with self.subTest(features=features):
+                    env = record_build_env(base, camodel, record_dir, "Ascend950", None, False, feature_list=features)
+                    self.assertEqual("ddr" in env["CANNSIM_COLLECT"].split(","), expect_ddr)
+
     def test_record_env_sets_ld_library_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             base, camodel, record_dir = self._fake_helper_paths(tmp)

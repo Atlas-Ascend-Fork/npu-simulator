@@ -81,7 +81,15 @@ class BiProfArgParser:
         report_mode.set_defaults(mode=BiprofMode.REPORT)
         add_feature_list_argument(report_mode)
 
-        # -- Required arguments --
+        self._add_report_input_args(report_mode)
+        self._add_report_processing_args(report_mode)
+        self._add_report_feature_args(report_mode)
+        self._add_report_output_args(report_mode)
+        self._add_report_logging_args(report_mode)
+        return report_mode
+
+    @staticmethod
+    def _add_report_input_args(report_mode: argparse.ArgumentParser) -> None:
         required_args = report_mode.add_argument_group("Required arguments")
         required_args.add_argument(
             "--input-db",
@@ -123,7 +131,8 @@ class BiProfArgParser:
             help="Specify the path to the device object file (optional)",
         )
 
-        # -- Processing --
+    @staticmethod
+    def _add_report_processing_args(report_mode: argparse.ArgumentParser) -> None:
         processing_args = report_mode.add_argument_group("Processing")
         processing_args.add_argument(
             "--kernel-name",
@@ -170,74 +179,25 @@ class BiProfArgParser:
             help=("Specify the maximum number of jobs for parallel execution (default: 8)"),
         )
 
-        # -- Extra modes --
+    @staticmethod
+    def _add_report_feature_args(report_mode: argparse.ArgumentParser) -> None:
         extra_args = report_mode.add_argument_group("Extra modes")
-        extra_args.add_argument(
-            "--scalar-ipc",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Compatibility flag. Overall scalar IPC is part of the base report",
+        features = (
+            ("--scalar-ipc", "Compatibility flag. Overall scalar IPC is part of the base report"),
+            ("--vec-ipc", "Enable aggregate IPC per vector-function invocation"),
+            ("--simd-perf", "Enable SIMD performance analysis (VfPMU top-down)"),
+            ("--simd-sampling", "Enable SIMD Stall reason analysis"),
+            ("--memory-utilization", "Enable memory utilization analyzers (can take a long time)"),
+            ("--roofline", "Persist Roofline analysis tables (requires function ranges from a device object)"),
+            ("--smart-pipes", "Show actual instruction execution time in pipe without 'waiting overlaps'."),
+            ("--critical-path", "Enable critical path analysis"),
+            ("--call-stack", "Enable call stack analysis"),
+            ("--matrix-copy", "Enable matrix copying visualizer"),
+            ("--bubble", "Enable bubble analysis"),
+            ("--sol", "Enable speed of light analysis"),
         )
-        extra_args.add_argument(
-            "--vec-ipc",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable aggregate IPC per vector-function invocation",
-        )
-        extra_args.add_argument(
-            "--simd-perf",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable SIMD performance analysis (VfPMU top-down)",
-        )
-        extra_args.add_argument(
-            "--simd-sampling",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable SIMD Stall reason analysis",
-        )
-        extra_args.add_argument(
-            "--memory-utilization",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help=("Enable memory utilization analyzers (can take a long time)"),
-        )
-        extra_args.add_argument(
-            "--roofline",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Persist Roofline analysis tables (requires function ranges from a device object)",
-        )
-        extra_args.add_argument(
-            "--smart-pipes",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help=("Show actual instruction execution time in pipe without 'waiting overlaps'."),
-        )
-        extra_args.add_argument(
-            "--critical-path",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable critical path analysis",
-        )
-        extra_args.add_argument(
-            "--call-stack",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable call stack analysis",
-        )
-        extra_args.add_argument(
-            "--matrix-copy",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable matrix copying visualizer",
-        )
-        extra_args.add_argument(
-            "--bubble",
-            action=ArgumentAction.STORE_TRUE,
-            default=False,
-            help="Enable bubble analysis",
-        )
+        for flag, help_text in features:
+            extra_args.add_argument(flag, action=ArgumentAction.STORE_TRUE, default=False, help=help_text)
 
         # Accept legacy window options for callers that still pass them.
         report_mode.add_argument(
@@ -253,7 +213,8 @@ class BiProfArgParser:
             help=argparse.SUPPRESS,
         )
 
-        # -- Output options --
+    @staticmethod
+    def _add_report_output_args(report_mode: argparse.ArgumentParser) -> None:
         output_args = report_mode.add_argument_group("Output options")
         output_args.add_argument(
             "-o",
@@ -296,7 +257,8 @@ class BiProfArgParser:
             ),
         )
 
-        # -- Logging level --
+    @staticmethod
+    def _add_report_logging_args(report_mode: argparse.ArgumentParser) -> None:
         logging_args = report_mode.add_argument_group("Logging")
         logging_args.add_argument(
             "-l",
@@ -313,8 +275,6 @@ class BiProfArgParser:
             ],
             help=f"Specify the logging level (default: {LogLevel.INFO})",
         )
-
-        return report_mode
 
     def parse(self, args: List[str]) -> Optional[argparse.Namespace]:
         feature_list = feature_list_from_args(args)

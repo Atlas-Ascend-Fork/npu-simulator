@@ -87,6 +87,18 @@ class BiProfArgParserContractTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             BiProfArgParser().parse(["report", "-o", "/tmp/out"])
 
+    def test_sol_is_enabled_by_default_and_explicit_feature_lists_replace_it(self):
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            db = Path(tmp) / "0000_kernel.db"
+            self.assertTrue(self._parse(_build_biprof_args(out, input_db_path=db)).sol)
+            self.assertFalse(self._parse(_build_biprof_args(out, input_db_path=db, feature_list="roofline")).sol)
+            self.assertTrue(self._parse(_build_biprof_args(out, input_db_path=db, feature_list="sol")).sol)
+
+            os.environ["BIPROF_OPTS"] = "--sol"
+            self.assertTrue(self._parse(_build_biprof_args(out, input_db_path=db)).sol)
+            self.assertFalse(self._parse(_build_biprof_args(out, input_db_path=db, feature_list="")).sol)
+
     def test_arch_defaults_to_none_and_db_input_mandatory_flag_exists(self):
         with TemporaryDirectory() as tmp:
             argv = [

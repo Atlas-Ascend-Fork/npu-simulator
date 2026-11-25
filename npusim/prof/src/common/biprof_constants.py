@@ -224,6 +224,34 @@ peak_bandwidth_map: Dict[ArchName, Dict[str, float]] = {
     },
 }
 
+# Speed of Light: hardware per-cycle maximums
+peak_cube_mac_per_cycle_map: Dict[ArchName, Dict[str, int]] = {
+    ArchName.V100: {
+        "f32": 512,
+        "f16": 4096,
+        "f8": 8192,
+        "f4": 16384,
+    },
+}
+
+peak_ipc_map: Dict[ArchName, Dict[str, float]] = {
+    ArchName.V100: {
+        "SIMD": 2.0,
+        "SIMT": 4.0,
+    }
+}
+
+# Speed of Light (memory): DDR data interface clock period (tDFI),
+# shares the same clock domain as DdrStateSamples / ExecutedInstructions ticks
+dfi_clk_ns_map: Dict[ArchName, float] = {
+    ArchName.V100: 1.25,
+}
+
+# Per-channel theoretical maximum bytes per sampling interval
+# (peak channel BW 25.6e9 B/s * tDFI 1.25 ns * STATE_TIME 3200 cycles).
+# Rows exceeding it indicate a missing counter reset or over-long interval
+V100_DDR_PER_CHANNEL_INTERVAL_BYTES = 102400
+
 
 V100_SIMD_STALL_REASONS = set(
     [

@@ -76,6 +76,7 @@ DROP TABLE IF EXISTS RooflineMetadata;
 DROP TABLE IF EXISTS RooflinePoints;
 DROP TABLE IF EXISTS RooflineComputePeaks;
 DROP TABLE IF EXISTS RooflineBandwidthPeaks;
+DROP TABLE IF EXISTS SpeedOfLightData;
 
 CREATE TABLE AnalysisState(
     AnalysisName VARCHAR(70) NOT NULL,
@@ -611,4 +612,9 @@ CREATE TABLE RooflineBandwidthPeaks(
     MemoryLevel TEXT NOT NULL,
     PeakGBs REAL NOT NULL,
     PRIMARY KEY (Unit, MemoryLevel)
+);
+
+CREATE TABLE SpeedOfLightData(
+    SolType VARCHAR(8) NOT NULL PRIMARY KEY,
+    SolThroughput REAL NOT NULL
 );

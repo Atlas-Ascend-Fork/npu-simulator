@@ -27,6 +27,7 @@ FEATURES = {
     "simd-sampling": ("simd",),
     "memory-utilization": ("mem",),
     "roofline": ("ub",),
+    "sol": ("ddr",),
     "smart-pipes": ("ccu",),
     "critical-path": ("ccu",),
     "bubble": ("icache",),
@@ -40,6 +41,7 @@ DEFAULT_FEATURES = (
     "simd-sampling",
     "memory-utilization",
     "roofline",
+    "sol",
     "bubble",
 )
 DEFAULT_FEATURE_LIST = ",".join(DEFAULT_FEATURES)
@@ -47,7 +49,7 @@ _SINGLE_CHIP_FEATURES = {"scalar-ipc", "vec-ipc", "smart-pipes"}
 # Existing backend flags remain available through BIPROF_OPTS, but are not
 # advertised as supported feature-list entries.
 _LEGACY_FEATURES = {"call-stack": (), "matrix-copy": ("mem",)}
-COLLECTION_ORDER = ("instr", "mem", "ub", "ccu", "pmu", "simd", "simt", "spr", "icache")
+COLLECTION_ORDER = ("instr", "mem", "ub", "ccu", "pmu", "simd", "simt", "spr", "icache", "ddr")
 
 
 def normalize_feature_list(value):

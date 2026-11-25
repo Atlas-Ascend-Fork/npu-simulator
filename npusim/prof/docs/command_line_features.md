@@ -23,6 +23,7 @@ files. No collection category supplies missing debug information.
 | `simd-sampling` | `instr,simd` | `SIMDSamplingStats`, `SIMDStallReasonTypes`, instruction IDs; object/DWARF for source labels | SIMD sampling stall statistics / timeline |
 | `memory-utilization` | `instr,mem` | Local `MemoryRWAccesses`, joined to instructions | Memory utilization states and memory heatmap layout/cells |
 | `roofline` | `instr,ub` | Instruction-derived compute/DMA/SIMT facts; `UbRwStatistics` for UB traffic; object function boundaries | `Roofline*` tables and their CSV exports |
+| `sol` | `instr,ddr` | Instruction timing, MMAD parameters, and DDR samples when present | `SpeedOfLightData` with Cube, Vector, and available DDR throughput as percentages of peak |
 | `smart-pipes` | `instr,ccu` | Instruction types/synchronization and `DispatchTime` | Split compute/sync queues, queue utilization and dispatch presentation |
 | `critical-path` | `instr,ccu` | Instructions + derived `PipeDependency`; `DispatchTime` for synchronization wait durations | `CriticalPath` and its trace |
 | `bubble` | `instr,icache` | Instruction timing/parameters and cache-miss events from `ICacheEvents` | `TraceBubbles`, `TraceBubbleSummary` and bubble trace; ICache events support cache-miss classification |
@@ -33,6 +34,11 @@ category names do not match the feature names directly. `smart-pipes` and
 `critical-path` derive dependency identities from instruction parameters. Their
 full queue/wait presentation also needs `DispatchTime` from `ccu`; neither reads
 `BrifEvents`.
+
+`sol` is enabled by default and adds `ddr` to automatic collection. Cube and
+Vector SOL use base instruction data. DDR SOL requires the helper to supply
+`DdrStateSamples` and its sample count in the capture. Captures without DDR
+samples still report Cube and Vector SOL.
 
 Source/Assembly is part of the base report, not a separate selectable feature.
 Its tables (`SourceInstructions`, `DebugInfo`, `AsmMetrics`, `SourceLineMetrics`)
@@ -76,6 +82,7 @@ explicitly with `CANNSIM_COLLECT`.
 | `pred` | `PredicateRegValues` | No direct consumer in the current profiler. `ExecutionMasks` and branch efficiency read `exec_mask` / `prdct_mask` from instruction `ExtendParams`, not this table |
 | `brif` | `BrifEvents` | Explicit collection only. No direct current consumer of `BrifEvents`; instruction-based branch efficiency does not read that table |
 | `icache` | `ICacheEvents`, `ICacheRefillEvents`, `ICacheStartingPCs` | ICache trace events and `summary.json` refill metrics. Without it no ICache events are shown; an empty refill count must not be interpreted as evidence of zero cache misses |
+| `ddr` | `DdrStateSamples` and its sample count | DDR throughput as a percentage of peak for SOL |
 | `all` | All callback categories | Explicit opt-in only; NPUSim never generates this value automatically |
 
 An explicit `CANNSIM_COLLECT` remains authoritative, even if it omits data
@@ -98,10 +105,10 @@ Ordinary `record -g` and `report` do not export VF JSON by default.
 The single-chip default is:
 
 ```text
-scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,bubble
+scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,sol,bubble
 ```
 
-Its collection union is `instr,mem,ub,ccu,pmu,simd,simt,spr,icache`, not `all`.
+Its collection union is `instr,mem,ub,ccu,pmu,simd,simt,spr,icache,ddr`.
 For multi-chip reports, the implicit defaults omit `scalar-ipc` and `vec-ipc`,
 preserving the existing multi-chip policy. Explicit selections
 remain authoritative.

@@ -140,11 +140,11 @@ result = record(cfg)   # 运行三阶段流水线，打印终端 UI
 Without an explicit selection, the default list is:
 
 ```text
-scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,bubble
+scalar-ipc,vec-ipc,simd-perf,simd-sampling,memory-utilization,roofline,sol,bubble
 ```
 
 `record` and `ktest` derive `CANNSIM_COLLECT` from the selected features. The
-list above requires `instr,mem,ub,ccu,pmu,simd,simt,spr,icache`. `all` is never selected automatically.
+list above requires `instr,mem,ub,ccu,pmu,simd,simt,spr,icache,ddr`. `all` is never selected automatically.
 An explicit `CANNSIM_COLLECT` is preserved exactly, including an empty value.
 
 ```bash
@@ -159,6 +159,9 @@ npusim record ./app -s Ascend950 -n 0 -g --feature-list ''
 
 # Analyze previously collected inputs; cannot add missing collection data.
 npusim report -e /path/to/recording -n 0 --feature-list roofline
+
+# Select Speed of Light as the only optional analysis; collect instr,ccu,simt,spr,ddr.
+npusim record ./app -s Ascend950 -g --feature-list sol
 ```
 
 Without a CLI feature list, an explicit `BIPROF_OPTS` replaces the entire default
@@ -173,7 +176,7 @@ Base collection includes `instr,ccu,simt,spr` for BiProf's existing base analyse
 including queue utilization and dispatch information. This `ccu` dependency is independent of optional critical-path.
 The default optional features include `bubble`; its cache-miss classification
 requires the `icache` collector. `smart-pipes` is explicit opt-in. The required
-`vec-ipc`, `memory-utilization`, `roofline` and `simd-perf` are all defaults.
+`vec-ipc`, `memory-utilization`, `roofline`, `sol` and `simd-perf` are all defaults.
 Only existing BiProf analysis flags are used; `--feature-list` is the selection
 interface and no separate SIMT, SPR or ICache analysis options are introduced.
 
