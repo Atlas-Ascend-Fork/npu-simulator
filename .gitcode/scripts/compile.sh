@@ -17,7 +17,6 @@
 set -e
 set -o pipefail
 
-echo "ge_st_rt2: ${ge_st_rt2}"
 echo "GIT_TARGET_BRANCH: ${GIT_TARGET_BRANCH}"
 echo "OS_TYPE: ${OS_TYPE}"
 echo "task_name: ${task_name}"
@@ -26,11 +25,6 @@ echo "task_name: ${task_name}"
 # Init #
 ########
 
-function LOG_HEAD() {
-    local assert_msg=${1}
-    date_time=$(date +%Y%m%d-%H%M%S)
-    echo -e "[INFO] ${date_time} ${assert_msg}"
-}
 
 function LOG_DO() {
    local cmd="$*"
@@ -51,7 +45,7 @@ function DP_ASSERT_EQUAL() {
     fi
 }
 
-export REPOSITORY_NAME="ops-math"
+export REPOSITORY_NAME="npu-simulator"
 rm -rf /home/jenkins/opensource/json
 echo $(grep -E "^VERSION_ID=" /etc/os-release | cut -d'"' -f2)
 export PATH=/opt/buildtools/python-3.10.2/bin:$PATH
@@ -97,14 +91,6 @@ if [ -z "${OS_TYPE}" ]; then
     OS_TYPE=$(uname -m)
 fi
 
-if [ "${ge_st_rt2}X" != "kirinx90X" ];then
-    whoami
-    if [ -f /home/jenkins/Ascend/cann/share/info/ops_math/script/uninstall.sh ]; then
-        su - jenkins -c "sh /home/jenkins/Ascend/cann/share/info/ops_math/script/uninstall.sh"
-    else
-        echo "[WARN] uninstall.sh not found, skip"
-    fi
-fi
 
 if [ -f /home/jenkins/Ascend/cann/bin/setenv.bash ]; then
     source /home/jenkins/Ascend/cann/bin/setenv.bash

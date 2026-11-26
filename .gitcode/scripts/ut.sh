@@ -16,7 +16,6 @@
 set -e
 set -o pipefail
 
-echo "ge_st_rt2: ${ge_st_rt2}"
 echo "GIT_TARGET_BRANCH: ${GIT_TARGET_BRANCH}"
 echo "ut_type: ${ut_type}"
 
@@ -24,11 +23,6 @@ echo "ut_type: ${ut_type}"
 # Init #
 ########
 
-function LOG_HEAD() {
-    local assert_msg=${1}
-    date_time=$(date +%Y%m%d-%H%M%S)
-    echo -e "[INFO] ${date_time} ${assert_msg}"
-}
 
 function LOG_DO() {
    local cmd="$*"
@@ -56,7 +50,7 @@ function DP_ASSERT_EQUAL() {
     fi
 }
 
-REPOSITORY_NAME="ops-math"
+REPOSITORY_NAME="npu-simulator"
 
 echo $(grep -E "^VERSION_ID=" /etc/os-release | cut -d'"' -f2)
 if sudo update-alternatives --set gcc /usr/bin/gcc-16 2>/dev/null; then
