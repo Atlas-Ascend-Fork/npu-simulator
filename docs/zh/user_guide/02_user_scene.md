@@ -2,18 +2,18 @@
 
 ## kernel直调场景
 
-展示如何使用 NPUSim 工具采集 Kernel 直调的方式来采集Ascend C算子的性能数据，以内核调用符<<<>>>方式调用算子为例。
+展示如何使用 NPUSim 工具采集 Kernel 直调的方式来采集 Ascend C 算子的性能数据，以内核调用符<<<>>>方式调用算子为例。
 
 ### 前期准备
 
-1、参考 [环境安装](../quick_start/quick_install.md)安装对应的CANN工具以及执行环境变量。
+1、参考 [环境安装](../quick_start/quick_install.md)安装对应的 CANN 工具以及执行环境变量。
 ```bash
 # 执行环境变量
 source ${install_path}/cann/set_env.sh
 ```
-${install_path}：表示指定安装路径，默认安装在/usr/local/Ascend目录。
+${install_path}：表示指定安装路径，默认安装在 /usr/local/Ascend 目录。
 
-2、点击 [Vector add算子样例](https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/vector_add/main.asc) 获取样例工程，以Add向量加法算子为例。
+2、点击 [Vector add 算子样例](https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/vector_add/main.asc) 获取样例工程，以 Add 向量加法算子为例。
 
 ```bash
 # 说明：下载cann-samples仓库
@@ -23,7 +23,7 @@ git clone https://gitcode.com/cann/cann-samples.git
 
 ### 操作步骤
 
-1、基于样例工程的说明，构建可运行的算子可执行文件，编译完成后，在工程目录下生成可执行文件vector_add。
+1、基于样例工程的说明，构建可运行的算子可执行文件，编译完成后，在工程目录下生成可执行文件 vector_add。
 ```bash
 # 进入项目根目录，执行如下配置命令，命令仅供参考，详细可以查看仓库的README的说明。
 cmake -S . -B build -DNPU_ARCH=dav-3510
@@ -49,7 +49,7 @@ Parallel Simulation: All threads are joined.
 
 ---
 
-## PyTorch调用场景
+## PyTorch 调用场景
 
 通过 PyTorch 框架进行单算子调用的场景。
 
@@ -57,18 +57,18 @@ Parallel Simulation: All threads are joined.
 
 ### 前期准备
 
-1、参考[环境安装](../quick_start/quick_install.md)安装对应的CANN工具以及执行环境变量。
+1、参考[环境安装](../quick_start/quick_install.md)安装对应的 CANN 工具以及执行环境变量。
 ```bash
 # 执行环境变量
 source ${install_path}/cann/set_env.sh
 ```
-${install_path}：表示指定安装路径，默认安装在/usr/local/Ascend目录。
+${install_path}：表示指定安装路径，默认安装在 /usr/local/Ascend 目录。
 
-2、已参考[《Ascend Extension for PyTorch 配置与安装》](https://www.hiascend.com/document/detail/zh/Pytorch/60RC3/configandinstg/instg/insg_0001.html)，完成PyTorch框架和torch_npu插件的安装。
+2、已参考[《Ascend Extension for PyTorch 配置与安装》](https://www.hiascend.com/document/detail/zh/Pytorch/60RC3/configandinstg/instg/insg_0001.html)，完成 PyTorch 框架和 torch_npu 插件的安装。
 
 ### 操作步骤
 
-1、准备基础的PyTorch用例test_add.py。
+1、准备基础的 PyTorch 用例 test_add.py。
 ```python
 import torch
 import torch_npu

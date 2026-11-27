@@ -10,7 +10,7 @@
 
 当前支持的仿真芯片：`Ascend950` / `Ascend950DT`（`-s` 指定）；仅支持 2p/4p/8p。
 
-本文以 ops-transformer 仓的 `MoeDistributeDispatchV2` 单算子调用用例为例，走通"编译 → 双卡仿真 → 多卡报告"全流程。
+本文以 ops-transformer 仓的 `MoeDistributeDispatchV2` 单算子调用用例为例，走通“编译 → 双卡仿真 → 多卡报告”全流程。
 
 ## 环境要求
 
@@ -131,7 +131,7 @@ report
 该样例自身校验可用卡数，`export ENV_DEV_NUM=2`（>= 卡数）后再运行。
 
 **Q：仿真过程中用例报同步等待超时失败？**
-仿真速度远低于上板，见"准备样例"中的超时参数修改说明，将 `aclrtSynchronizeStreamWithTimeout` 的超时调大后重跑。
+仿真速度远低于上板，见“准备样例”中的超时参数修改说明，将 `aclrtSynchronizeStreamWithTimeout` 的超时调大后重跑。
 
 **Q：`--chip` 报 "no camodel template supports chip count N"？**
 随包拓扑模板最大 8 卡，更大卡数需自制拓扑模板并通过 `CAMODEL_CONFIG_PATH` 指定。

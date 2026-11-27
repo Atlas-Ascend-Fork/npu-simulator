@@ -1,24 +1,24 @@
 <h1 align="center">NPUSim</h1>
 
 <div align="center">
-<p><b><span style="font-size:24px;">昇腾NPU调试调优仿真工具</span></b></p>
+<p><b><span style="font-size:24px;">昇腾 NPU 调试调优仿真工具</span></b></p>
 </div>
 
 ## ️ ℹ️ 简介
-NPUSim（全称NPU Simulator）是一款面向算子开发场景的SoC级芯片仿真工具，用于分析运行在AI仿真器上的AI任务在各阶段的精度和性能数据（如指令执行情况等）。该工具有助于用户进行深度性能调优，使研发人员在无法获取或芯片资源紧缺的情况下，也能获得与真实芯片几乎一致的验证效果和性能反馈。
+NPUSim（全称 NPU Simulator）是一款面向算子开发场景的 SoC 级芯片仿真工具，用于分析运行在 AI 仿真器上的 AI 任务在各阶段的精度和性能数据（如指令执行情况等）。该工具有助于用户进行深度性能调优，使研发人员在无法获取或芯片资源紧缺的情况下，也能获得与真实芯片几乎一致的验证效果和性能反馈。
 
 ## ⚙️ 功能介绍
-该工具与板上运行保持二进制兼容（同一kernel可同时在仿真和AI处理器执行），主要用途如下：
+该工具与板上运行保持二进制兼容（同一 kernel 可同时在仿真和 AI 处理器执行），主要用途如下：
 
-精度仿真：输出bit级精度结果，协助用户完成算子的精度验证。</br>
+精度仿真：输出 bit 级精度结果，协助用户完成算子的精度验证。</br>
 性能仿真：输出指令流水图，协助用户定位算子性能瓶颈问题。
 
 ## ⚡️ 环境准备
 
-在搭建环境之前，请先确认硬件在本工具的支持范围内
+在搭建环境之前，请先确认硬件在本工具的支持范围内。
 
-* 运行环境支持的CPU 架构：aarch64、x86_64。
-* 支持仿真的昇腾 AI 处理器：Ascend 950系列。
+* 运行环境支持的 CPU 架构：aarch64、x86_64。
+* 支持仿真的昇腾 AI 处理器：Ascend 950 系列。
 
 按照[快速安装指南](./docs/zh/quick_start/quick_install.md)完成环境准备。
 
@@ -80,7 +80,7 @@ pip3 install dist/*.whl --upgrade -t /usr/local/Ascend/python/site-packages/
 
 ### 方式二：开发者源码编译安装
 
-适用于自有服务器且需手动安装 CANN 的开发者。请先下载并安装 [CANN toolkit 包](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master/)（按需安装 ops 包），安装指导参考《[CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)》。
+适用于自有服务器且需手动安装 CANN 的开发者。请先下载并安装 [CANN toolkit 包](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master/)（按需安装 ops 包），安装指导参考《[CANN 软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)》。
 
 CANN 安装完成后，编译 npusim 并覆盖安装：
 

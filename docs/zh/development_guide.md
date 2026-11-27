@@ -20,9 +20,9 @@
 
 - 海象运算符 `:=`（3.8）
 - `match` 语句（3.10）
-- 内置泛型注解 `list[int]`、`dict[str, int]` 直接求值（3.9）——除非模块顶部有 `from __future__ import annotations`
+- 内置泛型注解 `list[int]`、`dict[str, int]` 直接求值（3.9）——除非模块顶部有 `from __future__ import annotations`。
 - `str.removesuffix` / `str.removeprefix`（3.9）
-- PEP 604 联合类型 `X | Y` 标注直接求值（3.10）；即使延迟注解可通过静态检查，仍须考虑运行时解析注解的兼容性
+- PEP 604 联合类型 `X | Y` 标注直接求值（3.10）；即使延迟注解可通过静态检查，仍须考虑运行时解析注解的兼容性。
 
 CI 中由 `.gitcode/scripts/py37_compat.sh` 专项检查，本地可执行：
 

@@ -32,7 +32,7 @@ cmake -S tests/st -B build -DNPU_ARCH=dav-3510
 cmake --build build --target vector_add
 ```
 
-编译完成后，切换到可执行目录文件的所在目录`build/Samples/0_Introduction/vector_add`，可以看到算子可执行文件vector_add：
+编译完成后，切换到可执行目录文件的所在目录 `build/Samples/0_Introduction/vector_add`，可以看到算子可执行文件 vector_add：
 
 ```bash
 cd build/Samples/0_Introduction/vector_add
@@ -50,13 +50,13 @@ build/Samples/0_Introduction/vector_add
 
 ## 执行仿真命令
 
-在`build/Samples/0_Introduction/vector_add`目录下运行如下仿真命令
+在 `build/Samples/0_Introduction/vector_add` 目录下运行如下仿真命令。
 
 ```bash
 npusim record ./vector_add -s Ascend950 -g
 ```
 
-仿真工具执行日志文件在`build/Samples/0_Introduction/vector_add/npusim_*/`目录，执行日志文件为`npusim.log`。
+仿真工具执行日志文件在 `build/Samples/0_Introduction/vector_add/npusim_*/` 目录，执行日志文件为 `npusim.log`。
 
 
 从仿真工具日志文件可以看到示例中的打印信息：
@@ -74,4 +74,4 @@ Parallel Simulation: All threads are joined.
 trace_core0.json
 ```
 
-在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考“仿真结果解析”章节。
+在 Chrome 浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考“仿真结果解析”章节。

@@ -55,44 +55,44 @@ flowchart TD
 
 - **`RecordConfig`** — dataclass，持有 CLI 转译后的所有录制参数：
   `user_app`, `output`, `soc_version`, `gen_report`, `user_option`, `object_file`, `core_id`, `timeout`
-  （`timed_out` 为 `record()` 结束后的回填状态，非输入参数）
-- **`parse_duration(raw)`** — 把超时时长归一化为秒：只接受秒，纯数字（如 `90`、`1.5`）或带 `s` 后缀（如 `30s`，大小写不敏感）；`0` 表示不限制；分钟/小时（`30m`、`2h`）、负数等其他写法抛 `ValueError`
-- **`resolve_timeout(cli_value, env)`** — 解析生效超时：显式 CLI 值 > `$NPUSIM_TIMEOUT` > 0（不限制）
-- **`build_record_config_from_args(args)`** — 从 argparse Namespace 构造 `RecordConfig`
-- **`normalize_gen_report(raw)`** — 归一化 `--gen-report` 参数（`True → "true"`，`False → ""`，`"vf"` → `"vf"`）
+  （`timed_out` 为 `record()` 结束后的回填状态，非输入参数）。
+- **`parse_duration(raw)`** — 把超时时长归一化为秒：只接受秒，纯数字（如 `90`、`1.5`）或带 `s` 后缀（如 `30s`，大小写不敏感）；`0` 表示不限制；分钟/小时（`30m`、`2h`）、负数等其他写法抛 `ValueError`。
+- **`resolve_timeout(cli_value, env)`** — 解析生效超时：显式 CLI 值 > `$NPUSIM_TIMEOUT` > 0（不限制）。
+- **`build_record_config_from_args(args)`** — 从 argparse Namespace 构造 `RecordConfig`。
+- **`normalize_gen_report(raw)`** — 归一化 `--gen-report` 参数（`True → "true"`，`False → ""`，`"vf"` → `"vf"`）。
 
 ### paths — 路径解析
 
-- **`RecordPaths`** — frozen dataclass：`ascend_toolkit_path`, `ca_model_path`, `target_dir`, `record_dir`, `cannsim_log`
-- **`resolve_record_paths(output, soc_version, launch)`** — 读取 `ASCEND_TOOLKIT_HOME` 环境变量，构造 CA Model 路径，创建时间戳命名的 `target_dir` 与 `record_dir`
-- **`RecordPathError`** — 自定义异常，携带 `context` 字典用于诊断输出
+- **`RecordPaths`** — frozen dataclass：`ascend_toolkit_path`, `ca_model_path`, `target_dir`, `record_dir`, `cannsim_log`。
+- **`resolve_record_paths(output, soc_version, launch)`** — 读取 `ASCEND_TOOLKIT_HOME` 环境变量，构造 CA Model 路径，创建时间戳命名的 `target_dir` 与 `record_dir`。
+- **`RecordPathError`** — 自定义异常，携带 `context` 字典用于诊断输出。
 
 ### runtime — 运行环境
 
-- **`prepare_runtime_dirs(app_cwd, target_dir)`** — 在 `app_cwd` 下创建 `log/`, `log/ub_log/`, `run_log/`；在 `target_dir` 下创建 `record/log_ca/`
-- **`build_execution_env(...)`** — 构建子进程环境：向 `LD_LIBRARY_PATH` 注入 CA Model 路径，设置 `CORE_ENABLE_MASK`（十六进制掩码），`CAMODEL_LOG_PATH`，`STARS_LOG_PATH`；对 Python 启动设置 `TASK_QUEUE_ENABLE=0`
+- **`prepare_runtime_dirs(app_cwd, target_dir)`** — 在 `app_cwd` 下创建 `log/`, `log/ub_log/`, `run_log/`；在 `target_dir` 下创建 `record/log_ca/`。
+- **`build_execution_env(...)`** — 构建子进程环境：向 `LD_LIBRARY_PATH` 注入 CA Model 路径，设置 `CORE_ENABLE_MASK`（十六进制掩码），`CAMODEL_LOG_PATH`，`STARS_LOG_PATH`；对 Python 启动设置 `TASK_QUEUE_ENABLE=0`。
 
 ### launch_spec — 启动规格
 
-- **`LaunchSpec`** — frozen dataclass：`raw`, `kind`（binary / script / command），`label`, `argv`, `cwd`, `asset_roots`, `is_python`, `executable_path`
-- **`build_launch_spec(raw_user_app, user_option, cwd)`** — 判断用户输入是本地文件还是 shell 命令，自动检测 ELF / Python / Shell 脚本，生成结构化启动规格
+- **`LaunchSpec`** — frozen dataclass：`raw`, `kind`（binary / script / command），`label`, `argv`, `cwd`, `asset_roots`, `is_python`, `executable_path`。
+- **`build_launch_spec(raw_user_app, user_option, cwd)`** — 判断用户输入是本地文件还是 shell 命令，自动检测 ELF / Python / Shell 脚本，生成结构化启动规格。
 
 ### runner — 子进程执行
 
-- **`RunResult`** — dataclass：`success`, `dashboard`, `stderr_tail`, `interrupted`, `timed_out`, `returncode`
-- **`run_user_app_with_dashboard(argv, env, cwd, log_path, title, timeout=0.0)`** — 以 `start_new_session=True` 启动子进程；stdout/stderr 读线程同时写日志并喂给 Dashboard；`KeyboardInterrupt` 时终止进程组（SIGTERM → SIGKILL 逐级升级）
-- **超时保护** — `timeout > 0` 时主线程 `wait(timeout)` 到点即触发 `_terminate_process_group`（SIGTERM → 5s 宽限 → SIGKILL），`RunResult.timed_out` 回传；计时起点为子进程 Popen，仅覆盖仿真执行段。超时前后的配置 / 事件以 `[npusim]` 标记行写入 `npusim.log`，超时触发的终止即使退出码为 0 也判失败
+- **`RunResult`** — dataclass：`success`, `dashboard`, `stderr_tail`, `interrupted`, `timed_out`, `returncode`。
+- **`run_user_app_with_dashboard(argv, env, cwd, log_path, title, timeout=0.0)`** — 以 `start_new_session=True` 启动子进程；stdout/stderr 读线程同时写日志并喂给 Dashboard；`KeyboardInterrupt` 时终止进程组（SIGTERM → SIGKILL 逐级升级）。
+- **超时保护** — `timeout > 0` 时主线程 `wait(timeout)` 到点即触发 `_terminate_process_group`（SIGTERM → 5s 宽限 → SIGKILL），`RunResult.timed_out` 回传；计时起点为子进程 Popen，仅覆盖仿真执行段。超时前后的配置 / 事件以 `[npusim]` 标记行写入 `npusim.log`，超时触发的终止即使退出码为 0 也判失败。
 
 ### artifacts — 产物归档
 
-- **`archive_assets(record_dir, asset_names, asset_roots, on_fail_delete)`** — 将仿真产物从运行目录移至 `record_dir`；若 `record_dir` 不可用且 `on_fail_delete=True`，则删除残留产物
+- **`archive_assets(record_dir, asset_names, asset_roots, on_fail_delete)`** — 将仿真产物从运行目录移至 `record_dir`；若 `record_dir` 不可用且 `on_fail_delete=True`，则删除残留产物。
 - **AI Core object 自动归档** — 本地 ELF binary 启动且环境中存在 `msobjdump` 时，record 会将设备 ELF 提取到 `record/aicore_objects/`；提取失败只告警，不阻断仿真。Python、shell command 和非 ELF script 暂不提取。
 - Plain `"/path/to/ELF --args"` invocations (including CSL) also use binary mode. Shell expressions, interpreter commands and scripts retain their existing launch mode.
-- **`cleanup_internal_dirs(record_dir)`** — 收尾清理工具：从归档目录移除 `log/`, `log_ca/`, `run_log/`；主录制流程在 summary / auto-report 后自动调用
+- **`cleanup_internal_dirs(record_dir)`** — 收尾清理工具：从归档目录移除 `log/`, `log_ca/`, `run_log/`；主录制流程在 summary / auto-report 后自动调用。
 
 ### auto_report — 自动报告
 
-- **`generate_auto_report(record_dir, target_dir, gen_report, core_id, object_file)`** — 在录制成功后调用 `report.generate_report`；当 `gen_report == "vf"` 时启用 `export_vf`
+- **`generate_auto_report(record_dir, target_dir, gen_report, core_id, object_file)`** — 在录制成功后调用 `report.generate_report`；当 `gen_report == "vf"` 时启用 `export_vf`。
 - 未显式传入 `--object-file` 时，prof 按当前 kernel 的精确符号从 `aicore_objects/` 选择设备 ELF；支持一个 ELF 包含多个 kernel 和多个 ELF。缺失/歧义不误选，关闭该 kernel 的 object-dependent 分析。旧目录的 `.user-app` 仅作为提取设备 ELF 的来源，宿主 ARM ELF 不直接交给 prof。
 - With recorded instruction encodings, selection verifies every executed PC/code pair against ELF disassembly. Runtime/debug names can identify an inlined helper instead of the entry symbol; when names differ, selection requires a unique object and executed global entry group (`_mix_aic`/`_mix_aiv` form one group). Missing/conflicting encodings, mismatched code and ambiguous candidates disable object-dependent analysis. Helper 128-bit SIMT word order and zero-padded 32-bit encodings are normalized before comparison.
 - Recorded PCs are relative to the launched entry, which may be nonzero in a shared ELF. Selection verifies `record_pc + entry_pc`; object import translates the selected instructions, functions and basic blocks back to launch-relative addresses once. `KernelInfo.object_entry_pc` preserves the offset for ELF/DWARF queries. Recorded address fields are not rewritten.
@@ -100,11 +100,11 @@ flowchart TD
 
 ### presentation — 终端展示
 
-- 横幅：`print_start_banner()`
-- 阶段标记：`print_stage_ok(idx, name, extra)` / `print_stage_fail(idx, reason, context)`
-- Stage 3 前置：`print_stage3_preamble(...)` — 参考基准表 + 启动规格摘要
-- 汇总：`print_record_summary(state, success)` — 状态行、产物位置、警告、失败日志尾部、下一步提示
-- 辅助：`fmt_accent()`, `now_local_str()`, `fmt_returncode()`
+- 横幅：`print_start_banner()`。
+- 阶段标记：`print_stage_ok(idx, name, extra)` / `print_stage_fail(idx, reason, context)`。
+- Stage 3 前置：`print_stage3_preamble(...)` — 参考基准表 + 启动规格摘要。
+- 汇总：`print_record_summary(state, success)` — 状态行、产物位置、警告、失败日志尾部、下一步提示。
+- 辅助：`fmt_accent()`, `now_local_str()`, `fmt_returncode()`。
 
 ## 使用方式
 

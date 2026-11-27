@@ -185,11 +185,11 @@ jq '[.timeline[] | select(.vf_function_pc == "0x304")] | group_by(.pipe) | map({
 
 ## 5. 典型分析流程
 
-1. `jq '.kernel.exec_time_ns'` — 整体耗时是否符合预期
-2. `jq '.vfs[0]'` — 定位 exec IPC 最差的 VF 函数
-3. 看 `ipc.exec` / `ipc.ldst` — 判断算力利用率与访存占比
-4. 看 `instr_profile.by_pipe` — 了解指令组成
-5. 用 `timeline` 按 `vf_function_pc` 过滤 — 查看具体指令执行时序
-6. 区分 `type`（simd/simt）— 按执行模式分别分析
+1. `jq '.kernel.exec_time_ns'` — 整体耗时是否符合预期。
+2. `jq '.vfs[0]'` — 定位 exec IPC 最差的 VF 函数。
+3. 看 `ipc.exec` / `ipc.ldst` — 判断算力利用率与访存占比。
+4. 看 `instr_profile.by_pipe` — 了解指令组成。
+5. 用 `timeline` 按 `vf_function_pc` 过滤 — 查看具体指令执行时序。
+6. 区分 `type`（simd/simt）— 按执行模式分别分析。
 
 > 多核均衡、Pipe 利用率、关键路径、带宽等全局指标不在 `vf_report.json` 范围内，请查看 `summary.json` 与 `aicore_utilization.json` 报告。

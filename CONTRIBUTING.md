@@ -43,7 +43,7 @@ pip3 install dist/*.whl --upgrade -t /usr/local/Ascend/python/site-packages/
 
 **方式二：开发者源码编译安装**
 
-请先按《[CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)》安装 CANN toolkit（按需安装 ops 包），然后在仓库根目录执行：
+请先按《[CANN 软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)》安装 CANN toolkit（按需安装 ops 包），然后在仓库根目录执行：
 
 ```bash
 bash ./clear.sh && bash ./build_wheel.sh
@@ -135,10 +135,10 @@ bash .gitcode/scripts/py37_compat.sh 3.7
 
 #### 合规检查
 
-- [ ] 代码是否符合本仓 `ruff` 规范与 Python 3.7 兼容要求
-- [ ] 代码是否可以正常编译打包（`bash ./build_wheel.sh`）
-- [ ] 新增或修改行为是否已补充测试并通过
-- [ ] Markdown 文档语法与链接是否正确
+- [ ] 代码是否符合本仓 `ruff` 规范与 Python 3.7 兼容要求。
+- [ ] 代码是否可以正常编译打包（`bash ./build_wheel.sh`）。
+- [ ] 新增或修改行为是否已补充测试并通过。
+- [ ] Markdown 文档语法与链接是否正确。
 
 #### 提交规范
 
@@ -175,9 +175,9 @@ Committer 检视通过后，将标注 `/lgtm` 标签。Maintainer 最终审核�
 
 合入前请确认：
 
-- [ ] 所有门禁检查项均通过，且结果对应最新提交
-- [ ] 已获得 Committer 的 `/lgtm` 与 Maintainer 的 `/approve`
-- [ ] PR 已关联对应 Issue，且 Issue 中的方案讨论已形成结论
+- [ ] 所有门禁检查项均通过，且结果对应最新提交。
+- [ ] 已获得 Committer 的 `/lgtm` 与 Maintainer 的 `/approve`。
+- [ ] PR 已关联对应 Issue，且 Issue 中的方案讨论已形成结论。
 
 ---
 
@@ -258,13 +258,13 @@ bash ./clear.sh && bash ./build_wheel.sh
 
 ### C. PR 提交自查清单
 
-- [ ] 已阅读贡献指南并按社区要求签署 CLA
-- [ ] 新特性已完成 Issue 方案讨论并关联对应 Issue
-- [ ] 已补充或更新测试，并在 PR 中记录实际执行的命令、环境与结果
-- [ ] 涉及 CLI 参数、配置、报告字段变化时已同步更新文档
-- [ ] 已说明 Python 3.7、CLI、DB/schema、报告字段的兼容性影响
-- [ ] 已检查提交内容不含密钥、个人信息或未脱敏数据
-- [ ] 已处理或逐条答复评审意见；新增提交后重新检查门禁结果
+- [ ] 已阅读贡献指南并按社区要求签署 CLA。
+- [ ] 新特性已完成 Issue 方案讨论并关联对应 Issue。
+- [ ] 已补充或更新测试，并在 PR 中记录实际执行的命令、环境与结果。
+- [ ] 涉及 CLI 参数、配置、报告字段变化时已同步更新文档。
+- [ ] 已说明 Python 3.7、CLI、DB/schema、报告字段的兼容性影响。
+- [ ] 已检查提交内容不含密钥、个人信息或未脱敏数据。
+- [ ] 已处理或逐条答复评审意见；新增提交后重新检查门禁结果。
 
 ### D. 关联资料
 

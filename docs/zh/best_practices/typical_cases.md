@@ -16,11 +16,11 @@ git clone https://gitcode.com/cann/cann-samples.git
 
 ### 概述
 
-展示如何通过 NPUSim 工具的性能分析报告，分析VF算子的瓶颈点，并实现算子的性能优化
+展示如何通过 NPUSim 工具的性能分析报告，分析 VF 算子的瓶颈点，并实现算子的性能优化。
 
 ### 操作步骤
 
-1、编译[rms_norm_quant_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/rms_norm_quant_story)样例算子，由于仿真执行速度相比于上板差异比较大，为了节省时间，先将示例代码中得shape调小再进行编译。
+1、编译[rms_norm_quant_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/rms_norm_quant_story)样例算子，由于仿真执行速度相比于上板差异比较大，为了节省时间，先将示例代码中的 shape 调小再进行编译。
 ```bash
 # 调整样例0_naive.asc代码中shape大小
 size_t a = 256;
@@ -32,36 +32,36 @@ cmake -S . -B build -DNPU_ARCH=dav-3510
 cmake --build build --target rms_norm_quant_story
 ```
 
-2、运行rms_norm_quant_0_naive仿真，分析对应的性能报告，指令流水图说明可参考[用户指南](../user_guide/01_user_guide.md#指令流水图)，AI Core 利用率等其他报告的说明可参考[用户指南](../user_guide/01_user_guide.md#ai-core-利用率报告)。
+2、运行 rms_norm_quant_0_naive 仿真，分析对应的性能报告，指令流水图说明可参考[用户指南](../user_guide/01_user_guide.md#指令流水图)，AI Core 利用率等其他报告的说明可参考[用户指南](../user_guide/01_user_guide.md#ai-core-利用率报告)。
 ```bash
 # 进入build目录
 cd build/Samples/2_Performance/rms_norm_quant_story
 # 运行仿真
 npusim record -s Ascend950 ./rms_norm_quant_0_naive -g
 ```
-- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到只有core0的AIV0在运行，其他核心都是空闲，另外VF的执行IPC偏低约0.3左右，且 数据搬运 与 计算 交替执行、无重叠。示例图如下：
+- 查看 core0 的指令流水图，使用 Perfetto 打开 trace_core0.json，可以看到只有 core0 的 AIV0 在运行，其他核心都是空闲，另外 VF 的执行 IPC 偏低约 0.3 左右，且数据搬运与计算交替执行、无重叠。示例图如下：
 ![rms_norm_quant_0_naive指令流水图](images/rms_native_0.png)
 
 
-3、针对上述的问题，可以采用Gamma 预加载、多核并行、寄存器数据流、Double Buffer、UB 多行批处理等方式进行算子的优化，具体优化代码可以参考[rms_norm_quant_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/rms_norm_quant_story)样例。
+3、针对上述的问题，可以采用 Gamma 预加载、多核并行、寄存器数据流、Double Buffer、UB 多行批处理等方式进行算子的优化，具体优化代码可以参考[rms_norm_quant_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/rms_norm_quant_story)样例。
 
-4、直接运行rms_norm_quant_5_ub_utilization仿真，查看最终优化结果。
+4、直接运行 rms_norm_quant_5_ub_utilization 仿真，查看最终优化结果。
 ```bash
 npusim record -s Ascend950 ./rms_norm_quant_5_ub_utilization -g
 ```
-- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到core0的AIV0和AIV1都已经运行，VF的执行IPC已经提升到1.4左右，且数据搬运与计算是并行，示例图如下：
+- 查看 core0 的指令流水图，使用 Perfetto 打开 trace_core0.json，可以看到 core0 的 AIV0 和 AIV1 都已经运行，VF 的执行 IPC 已经提升到 1.4 左右，且数据搬运与计算是并行，示例图如下：
 ![rms_norm_quant_5_ub_utilization指令流水图](images/rsm_ub_5.png)
 
 
-## matmul性能优化
+## matmul 性能优化
 
 ### 概述
 
-展示如何通过NPUSim工具的性能分析报告，分析matmul算子的瓶颈点，并实现算子的性能优化
+展示如何通过 NPUSim 工具的性能分析报告，分析 matmul 算子的瓶颈点，并实现算子的性能优化。
 
 ### 操作步骤
 
-1、编译[matmul](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例算子,先编译0_naive，并生成输入数据。
+1、编译[matmul](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例算子，先编译 0_naive，并生成输入数据。
 ```bash
 # 进入项目根目录，执行编译
 cd ~/cann-samples
@@ -73,18 +73,18 @@ cd build_out/2_Performance/matmul_story/matmul_tutorials
 python3 gen_data.py 256 256 256
 ```
 
-2、运行matmul_tutorial_mxfp4_base仿真，观察结果。
+2、运行 matmul_tutorial_mxfp4_base 仿真，观察结果。
 ```bash
 npusim record -s Ascend950 ./matmul_tutorial_mxfp4_base -u '256 256 256' -g
 ```
-- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到GM→L1 搬运与 L1→L0 搬运及 MMAD 计算 完全串行，流水没有重叠，硬件利用率低下。
+- 查看 core0 的指令流水图，使用 Perfetto 打开 trace_core0.json，可以看到 GM→L1 搬运与 L1→L0 搬运及 MMAD 计算 完全串行，流水没有重叠，硬件利用率低下。
 
 
-3、针对上述问题，可以采用Double-Buffer、SWAT 调度优化等方法进行算子性能优化，具体参考[matmul_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例代码。
+3、针对上述问题，可以采用 Double-Buffer、SWAT 调度优化等方法进行算子性能优化，具体参考[matmul_story](https://gitcode.com/cann/cann-samples/tree/master/Samples/2_Performance/matmul_story/matmul_tutorials)样例代码。
 
 4、问题修复后，运行仿真，查看最终结果。
 ```bash
 npusim record -s Ascend950 ./matmul_tutorial_mxfp4_a_fullload -u '256 256 256' -g
 ```
 
-- 查看core0的指令流水图，使用Perfetto打开trace_core0.json，可以看到流水已经并行，硬件利用率提升。
+- 查看 core0 的指令流水图，使用 Perfetto 打开 trace_core0.json，可以看到流水已经并行，硬件利用率提升。
