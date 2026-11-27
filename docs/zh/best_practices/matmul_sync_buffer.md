@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文以 [CANN Samples](https://gitcode.com/cann/cann-samples) 中的 `Samples/0_Introduction/matmul` 为例，说明如何用较小 shape 快速仿真，并在NPUSim报告中观察 `SET_FLAG` / `WAIT_FLAG`、`GET_BUF` / `RLS_BUF` 这两类同步行为。同步控制相关背景可参考 CANN 文档中的[同步控制简介](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/API/ascendcopapi/atlasascendc_api_07_0179.html)。
+本文以 [CANN Samples](https://gitcode.com/cann/cann-samples) 中的 `Samples/0_Introduction/matmul` 为例，说明如何用较小 shape 快速仿真，并在 NPUSim 报告中观察 `SET_FLAG` / `WAIT_FLAG`、`GET_BUF` / `RLS_BUF` 这两类同步行为。同步控制相关背景可参考 CANN 文档中的[同步控制简介](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/API/ascendcopapi/atlasascendc_api_07_0179.html)。
 
 原始 `matmul` 样例已经包含 `AscendC::SetFlag` / `AscendC::WaitFlag`，适合展示 `SET_FLAG` / `WAIT_FLAG`。如果还需要观察 `GET_BUF` / `RLS_BUF` 及其流水连线，可以在 GM 到 L1、L1 到 L0 两个搬运阶段分别插入 `AscendC::Mutex::Lock` / `AscendC::Mutex::Unlock`，并让两组接口使用同一个 mutex ID。
 
@@ -83,7 +83,7 @@ AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(tool::ZERO_FLAG);
 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(tool::ZERO_FLAG);
 ```
 
-仿真完成后，在生成的报告或 Perfetto tracing 文件中搜索 `SET_FLAG`、`WAIT_FLAG`。NPUSim会根据执行 pipe、消费 pipe、event id 和 core id 识别成对的 flag 依赖，因此同一个 event id 被重复使用时，也能按时间顺序串起依赖关系。
+仿真完成后，在生成的报告或 Perfetto tracing 文件中搜索 `SET_FLAG`、`WAIT_FLAG`。NPUSim 会根据执行 pipe、消费 pipe、event id 和 core id 识别成对的 flag 依赖，因此同一个 event id 被重复使用时，也能按时间顺序串起依赖关系。
 
 ## 插入 get_buf/rls_buf
 

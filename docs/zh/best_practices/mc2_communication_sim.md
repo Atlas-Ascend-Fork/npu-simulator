@@ -2,19 +2,19 @@
 
 ## 概述
 
-对token数据进行EP（Expert Parallelism）域AllToAllV通信的算子（如`MoeDistributeDispatchV2`、`MoeDistributeCombineV2`），以及AllGatherMatmul、MatmulAllReduce等通算融合（MC2）算子，其单算子调用即涉及多设备通信。NPUSim 支持此类算子的**多卡通信仿真**：在 CPU 仿真环境中拉起 N 张虚拟卡，通信链路由 CANN 包内置的 HCCL mock 库承接，无需真实组网，即可完成功能验证与指令级性能数据采集。
+对 token 数据进行 EP（Expert Parallelism）域 AllToAllV 通信的算子（如 `MoeDistributeDispatchV2`、`MoeDistributeCombineV2`），以及 AllGatherMatmul、MatmulAllReduce 等通算融合（MC2）算子，其单算子调用即涉及多设备通信。NPUSim 支持此类算子的**多卡通信仿真**：在 CPU 仿真环境中拉起 N 张虚拟卡，通信链路由 CANN 包内置的 HCCL mock 库承接，无需真实组网，即可完成功能验证与指令级性能数据采集。
 
 **适用范围**：
 - 多卡通信仿真当前仅支持 **UBMEM 场景**（即通信内存位于 UBMEM 的多卡通信），非 UBMEM 场景暂不支持；
 - 仅支持**单进程多线程**形态：用户应用程序须为一个进程内按卡开线程（如本文样例每卡一个 `std::thread`），多进程形态暂不支持。
 
-当前支持的仿真芯片：`Ascend950` / `Ascend950DT`（`-s` 指定）；仅支持2p/4p/8p。
+当前支持的仿真芯片：`Ascend950` / `Ascend950DT`（`-s` 指定）；仅支持 2p/4p/8p。
 
 本文以 ops-transformer 仓的 `MoeDistributeDispatchV2` 单算子调用用例为例，走通"编译 → 双卡仿真 → 多卡报告"全流程。
 
 ## 环境要求
 
-1. 安装 CANN包，并 `source ${install_path}/ascend-toolkit/set_env.sh`。多卡仿真依赖包内三个组件：`tools/simulator/Ascend950PR_9589/camodel`（仿真器）、`tools/simulator/bin/libcannsim_helper.so`（采集库，须与 npusim 版本一致）、`tools/simulator/dav_3510/camodel/libhccl_fwk_camodel.so`（通信 mock 库）。
+1. 安装 CANN 包，并 `source ${install_path}/ascend-toolkit/set_env.sh`。多卡仿真依赖包内三个组件：`tools/simulator/Ascend950PR_9589/camodel`（仿真器）、`tools/simulator/bin/libcannsim_helper.so`（采集库，须与 npusim 版本一致）、`tools/simulator/dav_3510/camodel/libhccl_fwk_camodel.so`（通信 mock 库）。
 2. Python 运行时 SQLite >= 3.25（契约 DB 与报告 SQL 使用窗口函数）。检查命令：
 
    ```bash
