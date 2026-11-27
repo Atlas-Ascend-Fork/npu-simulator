@@ -30,13 +30,6 @@ def _parse(argv):
     return parser.parse_args(preprocess_gen_report_argv(argv))
 
 
-def _parse(argv):
-    """Parse record argv with the same preprocessing used by the CLI entry point."""
-
-    parser = setup_parser()
-    return parser.parse_args(preprocess_gen_report_argv(argv))
-
-
 class GenReportCliTest(unittest.TestCase):
     def _gen_report(self, argv):
         return normalize_gen_report(_parse(argv).gen_report)

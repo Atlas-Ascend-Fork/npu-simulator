@@ -1039,13 +1039,6 @@ class Dashboard:
         width = max(72, min(shutil.get_terminal_size((100, 24)).columns - 2, 110))
         inner = width - 2
 
-        def _bar(left: str, right: str) -> str:
-            """构造 ┌─ left ─[填充]─ right ─┐ 风格的分隔行"""
-            left_s = f"{BOX_TL}{BOX_H}{left}{BOX_H}"
-            right_s = f"{BOX_H}{right}{BOX_H}{BOX_TR}"
-            pad = max(inner - (len(left_s) - 2) - (len(right_s) - 2), 1)
-            return left_s + BOX_H * pad + right_s
-
         def _row(content: str) -> str:
             """单行内容 │ content │，用 _pad_visible 把可见长度凑到 inner 字符。"""
             padded = _pad_visible(content, inner - 2)
