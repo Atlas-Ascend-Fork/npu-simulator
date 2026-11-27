@@ -14,10 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 版本单一真源。setup.py 与 cannsim_helper 的配对校验都读这里。
-# cannsim 与 cannsim_helper 强制同版本：report 阶段对 KernelInfo.helper_version
-# 做精确匹配，不等即 fail-closed 退出。改这里时必须同步
-# cannsim_helper/CMakeLists.txt 的 project(... VERSION ...)。
+# 版本单一真源，供 setup.py 与 report 阶段的配对校验使用。
+# cannsim_helper 是随 CANN 包提供的采集库 libcannsim_helper.so，
+# 其源码由独立工程维护。修改这里时须同步 helper 工程的
+# CMakeLists.txt 中 project(... VERSION ...)。
+# report 阶段要求 KernelInfo.helper_version 与本版本完全一致。
 MAJOR_VERSION = 0
 MINOR_VERSION = 8
 PATCH_VERSION = 0

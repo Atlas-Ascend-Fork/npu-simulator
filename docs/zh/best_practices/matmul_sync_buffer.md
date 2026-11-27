@@ -31,6 +31,10 @@
 
 ## 准备样例
 
+先按照[快速安装指南](../quick_start/quick_install.md)准备 CANN 和 NPUSim，并按[快速开始](../quick_start/quick_start.md#环境变量配置)加载 CANN 环境。
+
+`cannsim_helper` 是随 CANN 包提供的采集库 `libcannsim_helper.so`，默认从 `$ASCEND_TOOLKIT_HOME/tools/simulator/bin/` 查找。采集库须与 NPUSim wheel 版本一致；自定义安装位置可通过 `CANNSIM_HELPER_LIB` 指定库文件的完整路径。
+
 进入 `cann-samples` 仓库根目录，编译 `matmul`：
 
 ```bash
@@ -48,8 +52,6 @@ npusim record ./matmul -s Ascend950 -u '16 16 16' -g -n 0 -o out_put
 ```
 
 `matmul` 样例 kernel 内部固定使用 `baseM = 256`、`baseN = 256`、`baseK = 256 / sizeof(T)`。当 `m`、`n` 小于 256 且 `k` 不超过 `baseK` 时，kernel 只需要处理一个输出 tile，适合快速验证同步指令是否被记录。
-
-当前验证环境按照 `cannsim_helper/verify.md` 使用 `npusim` 命令。
 
 ## 观察原始 set/wait
 
@@ -190,7 +192,7 @@ MTE2 RLS_BUF(cnt=0)
 
 ## 验证结果
 
-按照 `cannsim_helper/verify.md` 的 helper 构建、部署、wheel 刷新和 record 流程验证，结果如下：
+本例跨流水示例的验证结果如下：
 
 | 用例 | 结果 | 关键指令 |
 | --- | --- | --- |
