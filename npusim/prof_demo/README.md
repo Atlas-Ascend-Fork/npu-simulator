@@ -2,6 +2,8 @@
 
 `npusim` 的 JSON 报告子模块。算法抽取自已删除的 `cannsim/prof`，只使用标准库，不需要 CANN toolkit、collector 或 Plotly。`npusim report` / `npusim record -g` 通过 `npusim.core.report` 调用这里。
 
+`cannsim` 仍是 wheel 分发名，并与 `npusim` 共用 CLI 入口；本文在描述历史源码路径或兼容命令行为时保留 `cannsim` 名称。
+
 ## 运行
 
 兼容 Python 3.7+，仅使用标准库。`sqlite3` 链接的 SQLite 需为 3.8.0+（支持 `PRAGMA query_only`），不需要 JSON1 扩展。在仓库根目录执行：
