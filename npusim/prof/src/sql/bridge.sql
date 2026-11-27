@@ -52,13 +52,16 @@ CREATE TABLE IF NOT EXISTS Sections(
 
 CREATE TABLE IF NOT EXISTS SourceFiles(
     SourceFileId INTEGER PRIMARY KEY AUTOINCREMENT,
-    SourceFilePath VARCHAR(200) NOT NULL UNIQUE,
-    SourceFileText TEXT
+    SourceFilePath VARCHAR(200) NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS SourceLines(
+    SourceFileId INTEGER NOT NULL,
+    SourceLineNum INTEGER NOT NULL,
     SourceLineId INTEGER PRIMARY KEY AUTOINCREMENT,
-    SourceLine VARCHAR(200) NOT NULL UNIQUE
+    SourceLine TEXT NOT NULL,
+    UNIQUE (SourceFileId, SourceLineNum),
+    FOREIGN KEY (SourceFileId) REFERENCES SourceFiles (SourceFileId)
 );
 
 CREATE TABLE IF NOT EXISTS DebugInfo(

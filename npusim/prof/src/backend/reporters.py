@@ -203,8 +203,8 @@ class HotspotsDbOnlyReporter(HotspotsReporterBase):
             hinter.register_hints()
             hinter.run_hints()
 
-            with StageReporter("Save full source texts"):
-                BackendDBManager.save_source_file_texts()
+            with StageReporter("Save full source lines"):
+                BackendDBManager.save_full_source_lines()
                 # Tracing workers reconnect to the DB; publish the snapshot first.
                 database_handler.commit()
 

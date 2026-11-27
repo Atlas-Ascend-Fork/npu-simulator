@@ -41,27 +41,35 @@ from npusim.prof.src.backend.elf_object_reader import (
 
 class BackendDBManager:
     @staticmethod
-    def save_source_file_texts() -> None:
-        """Snapshot full files after analyzers have finished adding source paths."""
-        columns = database_handler.execute("PRAGMA table_info(SourceFiles)").fetchall()
-        if not any(column["name"] == "SourceFileText" for column in columns):
-            return
-
+    def save_full_source_lines() -> None:
+        """Add every readable line for files known to the report."""
         rows = database_handler.execute("SELECT SourceFileId, SourceFilePath FROM SourceFiles").fetchall()
         for row in rows:
-            text = None
+            file_id = row["SourceFileId"]
             path = Path(row["SourceFilePath"])
             try:
                 if not path.is_file():
                     raise OSError("Source file is missing or is not a regular file")
-                with path.open(encoding="utf-8", errors="replace", newline="") as source:
-                    text = source.read()
+                with path.open(encoding="utf-8", errors="replace") as source:
+                    lines = [(file_id, number, line.rstrip("\n")) for number, line in enumerate(source, start=1)]
             except (OSError, ValueError) as exc:
                 log.warning("Cannot read full source file %s: %s", path, exc)
-            database_handler.execute(
-                "UPDATE SourceFiles SET SourceFileText=? WHERE SourceFileId=?",
-                (text, row["SourceFileId"]),
+                continue
+
+            database_handler.executemany(
+                "INSERT OR IGNORE INTO SourceLines (SourceFileId, SourceLineNum, SourceLine) VALUES (?, ?, ?)",
+                lines,
             )
+
+        database_handler.execute("""
+            UPDATE DebugInfo
+            SET SourceLineId=(
+                SELECT SourceLineId FROM SourceLines
+                WHERE SourceLines.SourceFileId=DebugInfo.SourceFileId
+                  AND SourceLines.SourceLineNum=DebugInfo.DebugInfoLineNum
+            )
+            WHERE SourceLineId IS NULL
+        """)
 
     @staticmethod
     def _save_sections(sections: List[Section]) -> None:
@@ -85,9 +93,9 @@ class BackendDBManager:
     def _save_source_lines(source_lines: List[SourceLine]) -> None:
         database_handler.executemany(
             """
-        INSERT INTO SourceLines (SourceLine) VALUES (?)
+        INSERT INTO SourceLines (SourceFileId, SourceLineNum, SourceLine) VALUES (?, ?, ?)
         """,
-            [(line.text,) for line in source_lines],
+            [(line.file_id + 1, line.line_num, line.text) for line in source_lines],
         )
 
     @staticmethod

@@ -40,8 +40,8 @@ A column existing in the schema does not guarantee that its values are available
 |---|---|---|
 | Assembly listing and metric cells | `AsmMetrics` | Static PCs with aggregated dynamic metrics |
 | Source line metric cells | `SourceLineMetrics` | Aggregation by `(FileId, LineNum)` |
-| Source file list and full text | `SourceFiles` | File identity, debug path and complete document |
-| Source text fragments | `DebugInfo` + `SourceLines` | Available text for mapped source positions |
+| Source file list | `SourceFiles` | File identity and debug path |
+| Full source text | `SourceLines` | Text keyed by file ID and 1-based line number |
 | Bidirectional Source/Assembly selection | `SourceInstructions` + `DebugInfo` | PC to file/line mapping, independent of execution |
 | Function labels/ranges | `Functions` | `FunctionAddr`, `FunctionSize`, `FunctionName` |
 | Basic block labels/edges | `BasicBlocks`, `BasicBlocksRelations` | Block starts, lengths and CFG edges |
@@ -62,8 +62,8 @@ a different granularity.
 | `SourceInstructions.SourceInstrAddr` / `AsmMetrics.PC` | Launch-relative instruction address, matching `ExecutedInstructions.SourceInstrAddr`; display as hexadecimal |
 | `ExecutedInstructions.ExecInstrId` | Composite identity of one recorded execution; not a source line or PC |
 | `SourceFiles.SourceFileId` / `FileId` | File identity; use the full path for disambiguating basenames |
-| `DebugInfo.DebugInfoLineNum` / `LineNum` | Actual **1-based** source line number |
-| `SourceLines.SourceLineId` / `LineId` | Identity of deduplicated text; **not** a line number |
+| `SourceLines.SourceLineNum` / `DebugInfo.DebugInfoLineNum` / `LineNum` | Actual **1-based** source line number |
+| `SourceLines.SourceLineId` / `LineId` | Identity of one source position |
 | `DebugInfoId` | Mapping-record identity; **not** a source line number |
 
 ELF addresses are translated when importing the selected kernel and its functions.
@@ -90,14 +90,12 @@ The mapping chain is:
 SourceInstructions.DebugInfoId → DebugInfo.DebugInfoId
 DebugInfo.SourceFileId        → SourceFiles.SourceFileId
 DebugInfo.SourceLineId        → SourceLines.SourceLineId
+SourceLines.SourceFileId      → SourceFiles.SourceFileId
 ```
 
-Source text is read by numbered file line, stripped and deduplicated by text.
-`SourceLines` is therefore neither an ordered file nor a complete file snapshot.
-Two different positions, even in different files, can reference the same text ID.
-Unmapped comments/blank lines and original indentation cannot be recovered
-reliably from this table. Use `SourceFiles.SourceFileText` for the complete
-document; keep `SourceLines` for the existing fragment/mapping contract.
+Read `SourceLines` by file ID, ordered by `SourceLineNum`, to reconstruct a
+file. For a readable file this includes comments, blank lines and lines
+without an instruction. `DebugInfo` provides the locations from the ELF.
 Never interpret an absolute producer path as permission to read arbitrary files
 on the user's machine; source resolution belongs to the host's own policy.
 
@@ -267,9 +265,9 @@ for operator duration or infer a core utilization from instruction count.
   disabled pending helper-contract adaptation. Their tables/columns remain;
   show unavailable data as unavailable. Other optional analyzers can also be
   disabled or fail: inspect `AnalysisState` and actual data availability.
-- Full source documents are available in `SourceFiles.SourceFileText` when
-  the producer could read them during report generation. Inline frame metadata
-  remains limited to the existing source mappings.
+- Full source lines are available through `SourceLines` when
+  the producer could read the file during report generation. Inline frame
+  metadata remains limited to the existing instruction mappings.
 - Aggregated views have no arbitrary runtime core filter and inherit the
   existing join/grouping semantics described above.
 
@@ -287,67 +285,60 @@ missing-value semantics, and parse nested JSON fields separately. Preserve
 64-bit composite IDs exactly (e.g. BigInt or strings in JavaScript); do not
 round them through an unsafe Number conversion.
 
-The archive contains exported rows, not the raw SQLite file or a complete
-filesystem snapshot. Full documents are embedded in the `SourceFileText` column
-of `SourceFiles.csv`. Only paths listed in `SourceFiles` are considered; the
-producer does not scan the project or discover additional includes.
+The archive contains exported rows. The producer reads the paths listed in
+`SourceFiles` to populate `SourceLines`.
 Source/Assembly HTML is absent by design in this branch. The
 [Roofline CSV tables](roofline_data_format.md) describe a separate analysis contract.
 
-## Full source documents: `SourceFiles.SourceFileText`
+## Reconstructing a source file
 
-New report databases store complete source text in the nullable
-`SourceFiles.SourceFileText` column. The existing CSV exporter carries the column
-into `SourceFiles.csv` inside each kernel's `.npu-rep`.
+`SourceFiles.csv` maps `SourceFileId` to `SourceFilePath`. The path identifies
+the file as it appeared on the machine that generated the report.
+
+`SourceLines.csv` contains one row per source position. The columns are listed
+in export order.
 
 | Column | SQLite type | Meaning |
 |---|---|---|
-| `SourceFileId` | `INTEGER` | Existing file identity within this launch |
-| `SourceFilePath` | `VARCHAR(200)` | Existing debug/source path |
-| `SourceFileText` | `TEXT` | Complete document; `NULL` if unavailable |
+| `SourceFileId` | `INTEGER` | File ID from `SourceFiles.csv` |
+| `SourceLineNum` | `INTEGER` | 1-based line number within that file |
+| `SourceLineId` | `INTEGER` | Row ID referenced by `DebugInfo.SourceLineId` |
+| `SourceLine` | `TEXT` | Line text, including leading and trailing whitespace |
+
+Group rows by `SourceFileId` and sort each group numerically by
+`SourceLineNum`. The pair is unique. Read the CSV with a CSV parser so quoted
+text and empty line values are preserved. An empty string is a blank source
+line. Rows sharing the same text at different positions have distinct
+`SourceLineId` values.
 
 ```sql
-SELECT SourceFileId, SourceFilePath, SourceFileText
-FROM SourceFiles
-ORDER BY SourceFileId;
+SELECT SourceLineNum, SourceLine
+FROM SourceLines
+WHERE SourceFileId = :file_id
+ORDER BY SourceLineNum;
 ```
 
-Join `DebugInfo.SourceFileId` directly to this row. A `DebugInfoLineNum` of 27
-refers to the original 1-based line 27 of `SourceFileText`; `SourceLineId` is
-still a deduplicated fragment ID and is not an index into the full document.
-Files with the same basename remain separate because their IDs/paths differ.
+Display source from these rows even when a position has no corresponding
+`DebugInfo` row or runtime metrics. Use `DebugInfo` for instruction navigation
+and attach source metrics by `(FileId, LineNum)`.
 
-- Comments, blank lines, indentation, CRLF/LF, BOM and the final newline are
-  preserved in the text. Input is decoded as UTF-8 with replacement for invalid
-  byte sequences, matching the existing source-line reader; this is text storage,
-  not a byte-for-byte snapshot of a non-UTF-8 file.
-- The snapshot is read after analysis, including paths added by optional
-  analyzers, before report generation/export. It represents files at report
-  generation time, not at compilation or recording time. Keep sources matched
-  to the compiled binary.
-- An empty file is an empty string in SQLite. Missing, unreadable or non-regular
-  files produce a warning and `NULL`; other files remain available.
-- The existing CSV exporter represents both `NULL` and an empty string as an
-  empty field. CSV consumers cannot distinguish these two cases from this column
-  alone. Nonempty source text is exported in full without truncation.
-- CSV fields can contain newlines and quotes. Use a real CSV parser, not
-  line splitting, and allow large fields (for Python's `csv` reader, raise
-  `csv.field_size_limit` when necessary).
-- Once the report is packed, displaying embedded source text does not require
-  the original paths to exist on the consumer's machine.
-
-The column is created when report analysis creates `SourceFiles`. If an
-already analyzed database has the older schema, re-reporting preserves that
-schema and continues to export its source mappings. Readers can detect
-`SourceFileText` by checking the CSV header and use the existing source
-fragments when the column is absent.
+- Line text preserves comments, blank lines and indentation. Line terminators
+  are omitted. Input uses UTF-8 with replacement for invalid bytes.
+- The report adds lines without instruction mappings after analysis, including
+  for paths added by optional analyzers. Keep sources matched to the compiled
+  binary when generating the report.
+- Missing, unreadable or non-regular files produce a warning and retain any
+  known debug locations. Empty files contribute no line rows.
+- To regenerate an older report, use the original recording before report
+  analysis populated its source tables.
 
 ## Suggested UI loading sequence
 
 1. Select the kernel/launch and inspect the archive/export manifest.
-2. Load source/debug mapping and static instructions. Use `SourceFiles.SourceFileText`
-   for complete documents and a host resolver only when that text is unavailable.
-3. Build the two correlation indexes with `(report, file, 1-based line)` keys.
+2. Index `SourceFiles` by file ID and build the source view from `SourceLines`.
+   Use a host resolver when embedded source is unavailable.
+3. Load `SourceInstructions` and `DebugInfo` to build the two correlation indexes
+   with `(report, file, 1-based line)` keys.
 4. Attach `AsmMetrics` by PC and `SourceLineMetrics` by `(FileId, LineNum)`.
 5. Add optional hints, function/block decorations, IPC and summary charts.
 6. Keep code navigation usable when optional metrics, source text or stacks

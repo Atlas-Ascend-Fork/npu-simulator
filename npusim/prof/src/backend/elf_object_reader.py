@@ -41,6 +41,8 @@ class SourceFile:
 
 @dataclass(frozen=True)
 class SourceLine:
+    file_id: int
+    line_num: int
     text: str
 
 
@@ -227,16 +229,16 @@ class ElfObjectReader:
                     if os.path.isfile(file_path):
                         try:
                             with open(file_path, encoding="utf-8", errors="replace") as source_file:
-                                source_file_lines[file_path] = source_file.read().splitlines()
+                                source_file_lines[file_path] = [line.rstrip("\n") for line in source_file]
                         except OSError as error:
                             log.warning("Cannot read source file %s: %s", file_path, error)
                 file_lines = source_file_lines[file_path]
                 if 0 < line_num <= len(file_lines):
-                    source_line = file_lines[line_num - 1].strip()
-                    line_id = source_lines_map.get(SourceLine(source_line), None)
+                    source_line = SourceLine(file_id, line_num, file_lines[line_num - 1])
+                    line_id = source_lines_map.get(source_line)
                     if line_id is None:
                         line_id = len(source_lines_map)
-                        source_lines_map[SourceLine(source_line)] = line_id
+                        source_lines_map[source_line] = line_id
                 debug_info.append(DebugInfo(file_id, line_id, line_num))
                 continue
             # Unknown instruction pattern
